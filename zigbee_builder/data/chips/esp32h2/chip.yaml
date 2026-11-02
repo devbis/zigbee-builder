@@ -1,0 +1,24 @@
+name: esp32h2
+board: esp32h2_devkitm/esp32h2     # the board with its qualifiers, as west takes it
+board_file: esp32h2_devkitm_esp32h2   # the name of the overlay file Zephyr picks up
+toolchain: zephyr_sdk              # Zephyr SDK (riscv64-zephyr-elf), not the TC32 LLVM
+build: {driver: plain}             # one west build, no MCUboot loader (see ota below)
+roles: [router, end_device]
+# No sleepy end device: the stack has no light sleep, and the deep sleep needs retained memory
+# the board does not describe (sleep: null). An end device stays awake.
+sleep: null
+# OTA needs MCUboot (sysbuild); the workspace lacks its modules. Plain image only.
+ota: false
+snippet: null
+pins:
+  format: gpio_number
+  node: gpio0
+  max: 27
+  # SPI flash and USB pins; 8, 9 and 25 are strapping pins (9 is the board's button)
+  reserved: [6, 7, 15, 16, 17, 18, 19, 20, 21]
+wake: none
+# any pin pair is a hardware I2C
+i2c_hw: {any: {template: i2c_hw.dtsi.j2}}
+led0_node: false                   # the devkit has no gpio-leds node: the overlay makes one
+kconfig_all: [CONFIG_MAIN_STACK_SIZE=2048, CONFIG_PRINTK=n]
+flash: {full_image_offset: 0}

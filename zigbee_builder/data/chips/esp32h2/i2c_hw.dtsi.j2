@@ -1,0 +1,17 @@
+&pinctrl {
+	i2c0_zbr: i2c0_zbr {
+		group1 {
+			pinmux = <I2C0_SDA_{{ sda }}>, <I2C0_SCL_{{ scl }}>;
+			bias-pull-up;
+			drive-open-drain;
+			output-high;
+		};
+	};
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <I2C_BITRATE_STANDARD>;
+	pinctrl-0 = <&i2c0_zbr>;
+	pinctrl-names = "default";
+};

@@ -183,7 +183,7 @@ static bool {{ c.id }}_read(void)
 static int measure_tick(void *arg);
 
 /* An event (an input changed) after the device decided to sleep: run a tick, it reports and sleeps again */
-static void zb_schedule_report(void)
+static void __maybe_unused zb_schedule_report(void)
 {
 	(void)ev_timer_taskPost(measure_tick, NULL, 50);
 }
@@ -362,8 +362,10 @@ static u16 ep{{ ep.id }}_in_clusters[] = {
 {% if ep.first %}
 #if defined(CONFIG_ZIGBEE_OTA)
 static u16 ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}, {% endfor %}ZCL_CLUSTER_OTA };
+{% if ep.out %}
 #else
 static u16 ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}{{ ", " if not loop.last }}{% endfor %} };
+{% endif %}
 #endif
 {% else %}
 static u16 ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}{{ ", " if not loop.last }}{% endfor %} };

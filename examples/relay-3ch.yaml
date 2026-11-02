@@ -9,15 +9,15 @@ zigbee:
   ota_image_type: 0x5A12
 
 pins:
-  r1: PD2
-  r2: PD3
-  r3: PD4
-  b1: {pin: PA4, pull: up, inverted: true}
-  b2: {pin: PA5, pull: up, inverted: true}
-  b3: {pin: PA6, pull: up, inverted: true}
-  wall: {pin: PA7, pull: up, inverted: true}
-  pair: {pin: PC0, pull: up, inverted: true}
-  led: {pin: PB1, inverted: true}
+  r1: {tlsr8258: PD2, esp32h2: GPIO10}
+  r2: {tlsr8258: PD3, esp32h2: GPIO11}
+  r3: {tlsr8258: PD4, esp32h2: GPIO12}
+  b1: {pin: {tlsr8258: PA4, esp32h2: GPIO0}, pull: up, inverted: true}
+  b2: {pin: {tlsr8258: PA5, esp32h2: GPIO1}, pull: up, inverted: true}
+  b3: {pin: {tlsr8258: PA6, esp32h2: GPIO2}, pull: up, inverted: true}
+  wall: {pin: {tlsr8258: PA7, esp32h2: GPIO3}, pull: up, inverted: true}
+  pair: {pin: {tlsr8258: PC0, esp32h2: GPIO9}, pull: up, inverted: true}
+  led: {pin: {tlsr8258: PB1, esp32h2: GPIO13}, inverted: true}
 
 button: pair
 status_led: led

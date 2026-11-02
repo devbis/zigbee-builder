@@ -11,6 +11,20 @@ the device code is generated from a cluster catalog plus a small C runtime.
         --env-file ../zigbee-devices-firmware/scripts/env.local   # ZEPHYR_BASE, LLVM_TOOLCHAIN_PATH, ...
 
 Changing a board = editing `pins:`; changing the chip = `zigbee.chip:` (plus pins in that chip's names).
+A pin may carry one name per chip, so one file builds for both: `relay: {tlsr8258: PD2, esp32h2: GPIO12}`,
+and `--chip esp32h2` picks the chip without editing the file (`examples/plug-relay.yaml`, `plug-bl0937.yaml`,
+`relay-3ch.yaml`, `custom-cluster.yaml` are written that way).
+
+## Chips
+| Chip | Toolchain | Status |
+|---|---|---|
+| `tlsr8258` | TC32 LLVM (`LLVM_TOOLCHAIN_PATH`) | everything; MCUboot loader, OTA, sleepy end device |
+| `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake end device: relays, plugs, custom clusters build; no sleepy, no OTA, no ADC battery, no PWM yet |
+
+ESP32-H2 limits, and why: the stack has no light sleep, and its deep sleep needs a retained memory the board does not
+describe, so `sleepy: true` is an error there. OTA needs MCUboot through sysbuild, and the workspace lacks the
+`tf-psa-crypto` and `tf-psa-crypto-drivers` modules it needs (`west update tf-psa-crypto tf-psa-crypto-drivers`
+in the Zephyr workspace; not done, it changes the workspace). The image is flashed at offset 0.
 
 ## Layout
 - `zigbee_builder/` CLI, schema (`config.py`), resolver and renderer (`generator.py`), west build + packaging (`build.py`)
@@ -45,5 +59,5 @@ hue/saturation, xy, colour temperature, step commands, transitions; state in NV)
 PWM channels are assigned from the chip's pin table and conflicts are reported. The colour maths is integer
 only and checked on the host against known colours; Level Move runs to its end and Stop is ignored, hue/colour
 Move and colour loop are unsupported. This is the first use of Color Control in the stack: builds, not flashed.
-Not done: calibration settings in NV,
-second chip, Docker image, HA add-on. `app_common.c` still has TLSR-specific wake code (guarded by Kconfig).
+Second chip: the ESP32-H2 images build (about 268 KB of flash) and are not flashed. Not done: calibration settings in NV,
+ESP32-H2 sleep/OTA/ADC/PWM, other chips, Docker image, HA add-on. `app_common.c` still has TLSR-specific wake code (guarded by Kconfig).

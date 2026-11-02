@@ -29,22 +29,25 @@ def main(argv=None):
         p = sub.add_parser(name, help=h)
         p.add_argument("config")
         p.add_argument("-o", "--out", default="build", help="output directory (default: build)")
+        p.add_argument("--chip", help="build for this chip instead of zigbee.chip (pins: per-chip entries)")
         if name == "build":
             p.add_argument("--env-file", help="sh file setting ZEPHYR_BASE etc.")
     a = ap.parse_args(argv)
     try:
         cfg = load(a.config)
+        if a.chip:
+            cfg.zigbee.chip = a.chip
         if a.cmd == "validate":
             resolve(cfg)
             print("ok")
             return 0
         out = Path(a.out)
-        project = out / cfg.zigbee.name / "gen"
+        project = out / f"{cfg.zigbee.name}-{cfg.zigbee.chip}" / "gen"
         render(cfg, project, Path(a.config).resolve().parent)
         print(f"project: {project}")
         if a.cmd == "build":
             from .build import build
-            build(project, out / cfg.zigbee.name, Path(a.env_file) if a.env_file else None)
+            build(project, out / f"{cfg.zigbee.name}-{cfg.zigbee.chip}", Path(a.env_file) if a.env_file else None)
     except ConfigError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

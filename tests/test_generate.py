@@ -265,3 +265,59 @@ def test_light_one_endpoint():
     d["endpoints"].append({"id": 2, "device": "dimmable_light", "clusters": {"level": {"source": "lamp"}}})
     with pytest.raises(ConfigError, match="one endpoint"):
         resolve(Config.model_validate(d))
+
+
+PORTABLE = ["plug-relay.yaml", "plug-bl0937.yaml", "relay-3ch.yaml", "custom-cluster.yaml"]
+
+
+@pytest.mark.parametrize("name", PORTABLE)
+def test_same_yaml_for_both_chips(name, tmp_path):
+    """The point of the chip packs: only `chip:` changes, the pins come from the per-chip entries."""
+    for chip, overlay, gpio in (("tlsr8258", "tlsr8258_generic.overlay", "&gpio"),
+                                ("esp32h2", "esp32h2_devkitm_esp32h2.overlay", "&gpio0 ")):
+        cfg = load(str(EX / name))
+        cfg.zigbee.chip = chip
+        out = tmp_path / chip
+        render(cfg, out, EX)
+        assert gpio in (out / overlay).read_text()
+
+
+def test_esp32h2_differences(tmp_path):
+    cfg = load(str(EX / "plug-relay.yaml"))
+    cfg.zigbee.chip = "esp32h2"
+    render(cfg, tmp_path, EX)
+    conf = (tmp_path / "prj.conf").read_text()
+    assert "CONFIG_ZIGBEE_OTA=n" in conf and "TLSR" not in conf and "MINIMAL_LIBC" not in conf
+    assert not (tmp_path / "loader.conf").exists()
+    assert "SNIPPET" not in (tmp_path / "CMakeLists.txt").read_text()
+    # no led0 on the devkit: the overlay makes one
+    assert "aliases { led0 = &status_led; }" in (tmp_path / "esp32h2_devkitm_esp32h2.overlay").read_text()
+
+
+def test_esp32h2_end_device_stays_awake(tmp_path):
+    d = yaml.safe_load((EX / "plug-relay.yaml").read_text())
+    d["zigbee"].update(chip="esp32h2", role="end_device")
+    render(Config.model_validate(d), tmp_path, EX)
+    assert "end_device_awake.conf" in (tmp_path / "CMakeLists.txt").read_text()
+    d["zigbee"]["sleepy"] = True
+    with pytest.raises(ConfigError, match="not supported on esp32h2"):
+        resolve(Config.model_validate(d))
+
+
+def test_esp32h2_pins():
+    d = yaml.safe_load((EX / "plug-relay.yaml").read_text())
+    d["zigbee"]["chip"] = "esp32h2"
+    d["pins"]["relay"] = {"tlsr8258": "PD2", "esp32h2": "GPIO16"}       # flash pin
+    with pytest.raises(ConfigError, match="reserved"):
+        resolve(Config.model_validate(d))
+    d["pins"]["relay"] = {"tlsr8258": "PD2"}                           # no entry for the chip
+    with pytest.raises(ConfigError, match="no entry for chip 'esp32h2'"):
+        resolve(Config.model_validate(d))
+
+
+def test_esp32h2_has_no_battery_adc_pwm():
+    for name, msg in (("temp-humidity-sht30.yaml", "does not exist"), ("light-rgbww.yaml", "does not exist")):
+        d = yaml.safe_load((EX / name).read_text())
+        d["zigbee"]["chip"] = "esp32h2"
+        with pytest.raises(ConfigError, match=msg):
+            resolve(Config.model_validate(d))

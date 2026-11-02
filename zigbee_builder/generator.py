@@ -242,10 +242,15 @@ def resolve(cfg: Config):
 
     if z.role not in chip.d["roles"]:
         raise ConfigError(f"chip {chip.name} does not support role {z.role}")
-    sleepy = (z.role == "end_device") if z.sleepy is None else z.sleepy
+    can_sleep = chip.d.get("sleep") is not None
+    sleepy = (z.role == "end_device" and can_sleep) if z.sleepy is None else z.sleepy
     if sleepy and z.role != "end_device":
         raise ConfigError("sleepy: true needs role: end_device")
-    power = z.power or ("battery" if sleepy else "mains")
+    if sleepy and not can_sleep:
+        raise ConfigError(f"sleepy: true is not supported on {chip.name}: the stack has no light sleep and "
+                          f"the chip pack describes no retained memory for the deep sleep. Use sleepy: false "
+                          f"(the end device stays awake) or a router")
+    power = z.power or ("battery" if z.role == "end_device" else "mains")
 
     if z.role == "end_device" and not 1 <= z.poll_interval <= 60:
         raise ConfigError(f"poll_interval {z.poll_interval}s: the stack polls its parent every 1..60 s "
@@ -254,7 +259,10 @@ def resolve(cfg: Config):
     # --- pins
     named = {}
     for ref, v in cfg.pins.items():
-        pc = cfg.pin_cfg(ref)
+        try:
+            pc = cfg.pin_cfg(ref)
+        except ValueError as e:
+            raise ConfigError(str(e))
         named[ref] = (chip.pin(pc.pin), pc)
     seen = {}
     for ref, (p, _) in named.items():
@@ -318,7 +326,7 @@ def resolve(cfg: Config):
                 f"\t\t#address-cells = <1>;\n\t\t#size-cells = <0>;\n\n{kids}\t}};\n}};\n")
 
     if ctx.leds:
-        overlay_tail.append("/ {\n\tleds {\n" + "".join(ctx.leds) + "\t};\n};\n")
+        overlay_tail.append("/ {\n\tleds {\n\t\tcompatible = \"gpio-leds\";\n" + "".join(ctx.leds) + "\t};\n};\n")
     if ctx.inputs:
         overlay_tail.append("/ {\n\tzbr_inputs {\n\t\tcompatible = \"gpio-keys\";\n" + "".join(ctx.inputs) + "\t};\n};\n")
 
@@ -337,7 +345,13 @@ def resolve(cfg: Config):
     if cfg.status_led:
         p, pc = gpio(cfg.status_led)
         pol = "GPIO_ACTIVE_LOW" if pc.inverted else "GPIO_ACTIVE_HIGH"
-        overlay_tail.append(f"&led0 {{\n\tgpios = <&{p.node} {p.num} {pol}>;\n}};\n")
+        if chip.d.get("led0_node", True):
+            overlay_tail.append(f"&led0 {{\n\tgpios = <&{p.node} {p.num} {pol}>;\n}};\n")
+        else:   # the board has no led0: make it
+            overlay_tail.append(
+                f"/ {{\n\taliases {{ led0 = &status_led; }};\n\tleds {{\n\t\tcompatible = \"gpio-leds\";\n"
+                f"\t\tstatus_led: status_led {{\n\t\t\tgpios = <&{p.node} {p.num} {pol}>;\n"
+                f"\t\t\tlabel = \"Status\";\n\t\t}};\n\t}};\n}};\n")
 
     # --- endpoints
     eps, bindings = [], []
@@ -618,24 +632,25 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
         shutil.rmtree(rt)
     shutil.copytree(DATA / "runtime", rt)
 
-    sleep = chip.d["sleep"]
-    manufacturer_code = z.manufacturer_code or chip.d["manufacturer_code"]
+    sleep = chip.d.get("sleep") or {}
+    manufacturer_code = z.manufacturer_code or chip.d.get("manufacturer_code")
     kconfig = list(dict.fromkeys(ctx.kconfig))
     kconfig += [f"CONFIG_ZIGBEE_ZCL_REPORTING_TABLE_SIZE={max(len(r['defaults']) + len(r['onoffs']) + 3, 4)}"]
-    kconfig += [f"CONFIG_ZIGBEE_MANUFACTURER_CODE=0x{manufacturer_code:X}"]
+    if manufacturer_code is not None:       # else the SoC's default of the stack
+        kconfig += [f"CONFIG_ZIGBEE_MANUFACTURER_CODE=0x{manufacturer_code:X}"]
+    kconfig += ["CONFIG_ZIGBEE_OTA=y" if chip.d.get("ota", True) else "CONFIG_ZIGBEE_OTA=n"]
     kconfig += chip.d.get("kconfig_all", [])
     if z.role == "end_device":
         kconfig += [f"CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS={z.poll_interval * 1000}"]
         if r["sleepy"]:
             kconfig += sleep["retained_kconfig"]
-        else:
-            kconfig += ["CONFIG_ZIGBEE_SLEEPY=n"]
     if not z.debug:
         kconfig += ["CONFIG_SERIAL=n", "CONFIG_CONSOLE=n", "CONFIG_UART_CONSOLE=n"]
     kconfig = [k if k.startswith("CONFIG_") else "CONFIG_" + k for k in kconfig]
 
     ota_type = z.ota_image_type
-    zb_ctx = dict(r, z=z, ident=ident, ota_type=ota_type, manufacturer_code=manufacturer_code,
+    role_conf = ("router" if z.role == "router" else ("end_device" if r["sleepy"] else "end_device_awake"))
+    zb_ctx = dict(r, z=z, role_conf=role_conf, ident=ident, ota_type=ota_type, manufacturer_code=manufacturer_code,
                   sleep=sleep, GROUP_MAX=GROUP_MAX, pwr={"battery": 3, "mains": 1}[r["power"]],
                   comps=ctx.comps, name=z.name, COMMON=COMMON_CLUSTERS,
                   measure_ms=1000 * (z.measure_interval or (z.poll_interval if (r["sleepy"] or z.role == "end_device") else 1)))
@@ -653,7 +668,7 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
 
     # devicetree overlay
     base = jinja2.Template((chip.dir / "base.dtsi.j2").read_text()).render(name=z.name, ports=r["ports"])
-    (out / f"{chip.board}.overlay").write_text(base + "\n" + "\n".join(ctx.overlay) + "\n"
+    (out / f"{chip.overlay_name}.overlay").write_text(base + "\n" + "\n".join(ctx.overlay) + "\n"
                                                + "\n".join(r["overlay_tail"]))
 
     (out / "prj.conf").write_text("# Generated by zigbee-builder. Do not edit.\n"
@@ -668,11 +683,13 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     wh = chip.d.get("wake_header")
     (out / "chip_wake.h").write_text((chip.dir / wh).read_text() if wh else
         "#pragma once\n#include <zephyr/drivers/gpio.h>\nstatic inline void zbr_chip_wake_arm(const struct gpio_dt_spec *s) { (void)s; }\n")
-    (out / "loader.conf").write_text("\n".join(chip.d["loader"]["conf"]) + "\n")
-    shutil.copy(chip.dir / chip.d["loader"]["overlay"], out / "loader.overlay")
+    if chip.d.get("loader"):
+        (out / "loader.conf").write_text("\n".join(chip.d["loader"]["conf"]) + "\n")
+        shutil.copy(chip.dir / chip.d["loader"]["overlay"], out / "loader.overlay")
 
-    info = {"name": z.name, "chip": chip.name, "board": chip.board, "snippet": chip.d["snippet"],
-            "flash": chip.d["flash"], "version": z.version, "manufacturer_code": manufacturer_code,
+    info = {"name": z.name, "chip": chip.name, "board": chip.board, "snippet": chip.d.get("snippet"),
+            "flash": chip.d["flash"], "build": chip.d.get("build", {"driver": "two_step"}),
+            "toolchain": chip.d.get("toolchain", "tc32_llvm"), "ota": chip.d.get("ota", True), "version": z.version, "manufacturer_code": manufacturer_code,
             "ota_image_type": ota_type}
     (out / "build_info.json").write_text(json.dumps(info, indent=2) + "\n")
     return info

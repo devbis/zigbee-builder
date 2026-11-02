@@ -9,9 +9,9 @@ zigbee:
   ota_image_type: 0x5A20
 
 pins:
-  contact: {pin: PA4, pull: up}
-  button: {pin: PC0, pull: up, inverted: true}
-  led: {pin: PB1, inverted: true}
+  contact: {pin: {tlsr8258: PA4, esp32h2: GPIO0}, pull: up}
+  button: {pin: {tlsr8258: PC0, esp32h2: GPIO9}, pull: up, inverted: true}
+  led: {pin: {tlsr8258: PB1, esp32h2: GPIO13}, inverted: true}
 
 button: button
 status_led: led

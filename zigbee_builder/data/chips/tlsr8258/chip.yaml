@@ -1,6 +1,8 @@
 name: tlsr8258
 board: tlsr8258_generic
-toolchain: tc32_llvm            # needs the TC32 LLVM, see docker/ and README
+toolchain: tc32_llvm            # needs the TC32 LLVM, see README
+build: {driver: two_step}       # MCUboot loader, then the application as a slot-0 image
+ota: true
 snippet: tlsr8258-mcuboot
 roles: [router, end_device]
 # The zigbee stack and radio come with the board; manufacturer code default

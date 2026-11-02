@@ -43,9 +43,16 @@ class Chip:
         if fmt["format"] == "gpio_number":
             m = re.fullmatch(r"GPIO(\d+)", str(name).upper())
             if not m or int(m.group(1)) > fmt["max"]:
-                raise ConfigError(f"pin '{name}' does not exist on {self.name}")
+                raise ConfigError(f"pin '{name}' does not exist on {self.name} (GPIO0..GPIO{fmt['max']})")
+            if int(m.group(1)) in fmt.get("reserved", []):
+                raise ConfigError(f"pin '{name}' is reserved on {self.name} (flash or USB); "
+                                  f"reserved: {', '.join('GPIO%d' % n for n in fmt['reserved'])}")
             return Pin(m.group(0), fmt["node"], int(m.group(1)))
         raise ConfigError(f"chip {self.name}: unknown pin format")
+
+    @property
+    def overlay_name(self) -> str:
+        return self.d.get("board_file", self.board)
 
     def ports(self, pins: list[Pin]) -> list[str]:
         # tlsr8258: the deep-sleep wake works through every port, so all are on
@@ -55,7 +62,10 @@ class Chip:
         return sorted({p.node for p in pins})
 
     def i2c_hw_for(self, sda: str, scl: str):
-        for e in self.d.get("i2c_hw", []):
+        hw = self.d.get("i2c_hw", [])
+        if isinstance(hw, dict):            # any pin pair is a hardware bus
+            return hw.get("any")
+        for e in hw:
             if e["sda"] == sda.upper() and e["scl"] == scl.upper():
                 return e
         return None

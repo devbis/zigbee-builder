@@ -12,28 +12,42 @@ from pathlib import Path
 from .chip import ConfigError
 
 
-def _env(env_file: Path | None) -> dict:
+def _env(env_file: Path | None, toolchain: str = "tc32_llvm") -> dict:
     """ZEPHYR_BASE, LLVM_TOOLCHAIN_PATH, ZEPHYR_EXTRA_MODULES, WEST, PYTHON, MCUBOOT_DIR.
     The environment wins over an env file ("export X=" or ': "${X:=...}"' lines of sh)."""
     env = dict(os.environ)
     if env_file and env_file.exists():
-        names = ("ZEPHYR_BASE", "LLVM_TOOLCHAIN_PATH", "ZEPHYR_EXTRA_MODULES", "WEST", "PYTHON", "MCUBOOT_DIR")
+        names = ("ZEPHYR_BASE", "LLVM_TOOLCHAIN_PATH", "ZEPHYR_EXTRA_MODULES", "WEST", "PYTHON", "MCUBOOT_DIR",
+                 "ZEPHYR_SDK_INSTALL_DIR")
         script = f'. "{env_file}"; ' + "; ".join(f'echo "{n}=${{{n}:-}}"' for n in names)
         out = subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=True)
         for line in out.stdout.splitlines():
             k, _, v = line.partition("=")
             if v and k not in os.environ:
                 env[k] = v
-    for k in ("ZEPHYR_BASE", "LLVM_TOOLCHAIN_PATH", "ZEPHYR_EXTRA_MODULES"):
+    need = ["ZEPHYR_BASE", "ZEPHYR_EXTRA_MODULES"]
+    if toolchain == "tc32_llvm":
+        need.append("LLVM_TOOLCHAIN_PATH")
+    else:
+        if not env.get("ZEPHYR_SDK_INSTALL_DIR"):     # the newest SDK in the home directory
+            sdks = sorted(Path.home().glob("zephyr-sdk-*"))
+            if sdks:
+                env["ZEPHYR_SDK_INSTALL_DIR"] = str(sdks[-1])
+        need.append("ZEPHYR_SDK_INSTALL_DIR")
+    for k in need:
         if not env.get(k):
-            raise ConfigError(f"{k} is not set: export it or pass --env-file (see docs/environment.md)")
+            raise ConfigError(f"{k} is not set: export it or pass --env-file (see README)")
+    if env.get("WEST") and "/" in env["WEST"]:       # esptool and the rest of west's venv
+        env["PATH"] = str(Path(env["WEST"]).parent) + os.pathsep + env.get("PATH", "")
     return env
 
 
 def build(project: Path, out: Path, env_file: Path | None) -> list[Path]:
     info = json.loads((project / "build_info.json").read_text())
-    env = _env(env_file)
+    env = _env(env_file, info["toolchain"])
     west = env.get("WEST", "west")
+    if info["build"]["driver"] == "plain":
+        return _build_plain(project, out, info, env, west)
     zb = env["ZEPHYR_BASE"]
     env["ZEPHYR_TOOLCHAIN_VARIANT"] = "host"
     mcuboot = env.get("MCUBOOT_DIR") or subprocess.run(
@@ -54,6 +68,23 @@ def build(project: Path, out: Path, env_file: Path | None) -> list[Path]:
          f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}",
          *tc])
     return package(project, app, loader / "zephyr/zephyr.bin", env)
+
+
+def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> list[Path]:
+    """One west build with the Zephyr SDK: the image is flashed as it is (ESP: at offset 0)."""
+    zb = env["ZEPHYR_BASE"]
+    env["ZEPHYR_TOOLCHAIN_VARIANT"] = "zephyr"
+    app = out / info["name"]
+    subprocess.run(
+        [west, "build", "-p", "always", "-b", info["board"], "-d", str(app), str(project), "--",
+         f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
+         f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
+        cwd=zb, env=env, check=True)
+    full = app / f"{info['name']}-{info['version']}-full.bin"
+    full.write_bytes((app / "zephyr/zephyr.bin").read_bytes())
+    print(f"{full.name}: {full.stat().st_size} bytes, flash at {info['flash']['full_image_offset']:#x}"
+          f"{'' if info['ota'] else ' (no OTA on this chip yet)'}")
+    return [full]
 
 
 def _kconfig(text: str, name: str) -> int:

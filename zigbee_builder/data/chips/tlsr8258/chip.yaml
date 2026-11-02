@@ -1,0 +1,50 @@
+name: tlsr8258
+board: tlsr8258_generic
+toolchain: tc32_llvm            # needs the TC32 LLVM, see docker/ and README
+snippet: tlsr8258-mcuboot
+roles: [router, end_device]
+# The zigbee stack and radio come with the board; manufacturer code default
+manufacturer_code: 0xDB15
+# pin names: PA0..PE7 -> &gpioa..&gpioe
+pins: {format: port_letter, ports: [A, B, C, D, E], node: "gpio{port}", per_port: 8}
+# every gpio wakes a deep-sleeping device
+wake: any
+# flash layout, same as the snippet and the loader's board overlay
+flash: {loader_end: 0x8000, slot_size: 0x37000, header_size: 0x200}
+# hardware I2C: only this pair, else bit-banged
+i2c_hw: [{sda: PC2, scl: PC3, template: i2c_hw.dtsi.j2}]
+# led0 node exists in the board dts, so the overlay overrides its pin
+led0_node: true
+# vbat measurement without a divider: floating PC5, ADC pin index 10
+battery_adc: {template: battery_adc.dtsi.j2}
+# deep sleep: every wake is a reset; the state lives in retained RAM
+sleep:
+  retained_attr: __tlsr8258_retained
+  retained_header: power.h
+  retained_kconfig: [CONFIG_TLSR8258_PM_DEEP_RETENTION=y, CONFIG_TLSR8258_PM_RETENTION_SIZE=128]
+  retained_guard: CONFIG_TLSR8258_PM_DEEP_RETENTION
+kconfig_all: [CONFIG_MINIMAL_LIBC=y]
+loader:
+  conf: [CONFIG_MCUBOOT_SERIAL=n, CONFIG_BOOT_TC32_SERIAL_BREAK_ENTRANCE=n, CONFIG_BOOT_SERIAL_NO_APPLICATION=n, CONFIG_UART_TLSR8258_IRQ_DMA_RX=n, CONFIG_SERIAL=n]
+  overlay: loader.overlay
+wake_header: wake.h
+# PWM: the pins that can output it and the channels they can use (the pinctrl driver's table)
+pwm:
+  device: pwm0
+  period_cycles: 12000          # 2 kHz at the 24 MHz system clock, prescaler 0
+  pins:
+    PA2: [0]
+    PA3: [1]
+    PA4: [2]
+    PB0: [3]
+    PB1: [4]
+    PB2: [5]
+    PB4: [4]
+    PB5: [5]
+    PC1: [0]
+    PC2: [0]
+    PC3: [1]
+    PC4: [2]
+    PD2: [3]
+    PD5: [0]
+  template: pwm.dtsi.j2

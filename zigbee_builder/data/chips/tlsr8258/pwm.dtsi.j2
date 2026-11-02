@@ -1,0 +1,14 @@
+&pinctrl {
+{% for p in pins %}
+	pwm_{{ p.pin | lower }}: pwm_{{ p.pin | lower }} {
+		pinmux = <TLSR8258_PINMUX(TLSR8258_GPIO_{{ p.pin }}, TLSR8258_FUNC_PWM{{ p.channel }})>;
+	};
+
+{% endfor %}
+};
+
+&pwm0 {
+	status = "okay";
+	pinctrl-0 = <{% for p in pins %}&pwm_{{ p.pin | lower }}{{ " " if not loop.last }}{% endfor %}>;
+	pinctrl-names = "default";
+};

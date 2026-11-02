@@ -1,0 +1,11 @@
+/* Loader (MCUboot) devicetree: UART0 is left alone, so the pins keep their uses. */
+/ {
+	chosen {
+		/delete-property/ zephyr,uart-mcumgr;
+		/delete-property/ zephyr,console;
+	};
+};
+
+&uart0 {
+	status = "disabled";
+};

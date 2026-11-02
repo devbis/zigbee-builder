@@ -1,0 +1,493 @@
+/*
+ * SPDX-FileCopyrightText: Copyright The Zephyr Project Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include "app_common.h"
+#include "app_bdb.h"
+
+#include <string.h>
+
+#include <zephyr/device.h>
+#include <zephyr/devicetree.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#if defined(CONFIG_ZIGBEE_SLEEPY)
+#include <zephyr/pm/policy.h>
+#endif
+#if defined(CONFIG_ZIGBEE_SLEEPY_DEEP) && defined(CONFIG_SOC_SERIES_TLSR825X)
+#include "power.h"
+#define APP_BUTTON_WAKE 1
+#endif
+#include <zephyr/zigbee/zb_bootstrap.h>
+
+#include "zbapi/zb_api.h"
+#include "zcl/general/zcl_basic.h"
+#include "zcl/general/zcl_identify.h"
+#include "os/ev_timer.h"
+#include "zb_common.h"
+
+LOG_MODULE_REGISTER(app_common);
+
+#define APP_FACTORY_RESET_HOLD_MS 5000
+#define APP_BUTTON_DEBOUNCE_MS    30
+#define APP_IDENTIFY_TICK_MS      500
+
+/* ------------------------------------------------------------------ */
+/* Basic cluster                                                       */
+/* ------------------------------------------------------------------ */
+
+static const u8 basic_zcl_ver = 3U;
+static const u8 basic_app_ver = APP_RELEASE;
+static const u8 basic_stack_ver = 2U;
+static const u8 basic_hw_ver = 1U;
+static const u8 basic_power_src = APP_POWER_SOURCE;
+static u8 basic_dev_enabled = 1U;
+static const u16 cluster_rev = ZCL_ATTR_GLOBAL_CLUSTER_REVISION_DEFAULT;
+
+/* ZCL character strings carry their length in the first byte. */
+static u8 basic_mfr_name[1U + sizeof(APP_MANUFACTURER)];
+/* The model id may change at run time (a thermostat learns its model from its MCU) */
+#define APP_BASIC_STR_MAX 32U
+static u8 basic_model_id[1U + APP_BASIC_STR_MAX];
+static char model_id_str[APP_BASIC_STR_MAX + 1U] = APP_MODEL_ID;
+static u8 basic_sw_build[1U + sizeof(APP_SW_BUILD_ID)];
+static u8 basic_date_code[1U + sizeof(APP_DATE_CODE)];
+
+static const zclAttrInfo_t basic_attr_tbl[] = {
+	{ZCL_ATTRID_BASIC_ZCL_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (u8 *)&basic_zcl_ver},
+	{ZCL_ATTRID_BASIC_APP_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (u8 *)&basic_app_ver},
+	{ZCL_ATTRID_BASIC_STACK_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ,
+	 (u8 *)&basic_stack_ver},
+	{ZCL_ATTRID_BASIC_HW_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (u8 *)&basic_hw_ver},
+	{ZCL_ATTRID_BASIC_MFR_NAME, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
+	 (u8 *)basic_mfr_name},
+	{ZCL_ATTRID_BASIC_MODEL_ID, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
+	 (u8 *)basic_model_id},
+	{ZCL_ATTRID_BASIC_DATE_CODE, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
+	 (u8 *)basic_date_code},
+	{ZCL_ATTRID_BASIC_POWER_SOURCE, ZCL_DATA_TYPE_ENUM8, ACCESS_CONTROL_READ,
+	 (u8 *)&basic_power_src},
+	{ZCL_ATTRID_BASIC_DEV_ENABLED, ZCL_DATA_TYPE_BOOLEAN,
+	 ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, (u8 *)&basic_dev_enabled},
+	{ZCL_ATTRID_BASIC_SW_BUILD_ID, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
+	 (u8 *)basic_sw_build},
+	{ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ,
+	 (u8 *)&cluster_rev},
+};
+
+/* ------------------------------------------------------------------ */
+/* led0                                                                */
+/* ------------------------------------------------------------------ */
+
+#if DT_NODE_HAS_STATUS_OKAY(DT_ALIAS(led0))
+#define APP_HAS_LED 1
+static const struct gpio_dt_spec led = GPIO_DT_SPEC_GET(DT_ALIAS(led0), gpios);
+#endif
+
+static bool led_user_on;
+static bool identify_active;
+static bool identify_blink_on;
+static bool search_blink_on;
+
+/* Blinks while Identify runs or the device is looking for a network. */
+static void led_apply(void)
+{
+#ifdef APP_HAS_LED
+	bool on;
+
+	if (identify_active) {
+		on = identify_blink_on;
+	} else if (!zb_isDeviceJoinedNwk()) {
+		on = search_blink_on;
+	} else {
+		on = led_user_on;
+	}
+
+	gpio_pin_set_dt(&led, on ? 1 : 0);
+#endif
+}
+
+void app_led_set(bool on)
+{
+	led_user_on = on;
+	led_apply();
+}
+
+static ev_timer_event_t *led_timer;
+
+/*
+ * Toggles the search blink. The timer runs only while the device is looking for
+ * a network: once joined it stops, so a sleepy end device is not woken by it
+ * (led_search_start() arms it again when the device leaves the network).
+ */
+static int led_tick(void *arg)
+{
+	ARG_UNUSED(arg);
+
+	if (zb_isDeviceJoinedNwk()) {
+		search_blink_on = false;
+		led_timer = NULL;
+		led_apply();
+		return -1;
+	}
+
+	search_blink_on = !search_blink_on;
+	led_apply();
+	return APP_IDENTIFY_TICK_MS;
+}
+
+static void led_search_start(void)
+{
+#ifdef APP_HAS_LED
+	if (led_timer == NULL && !zb_isDeviceJoinedNwk()) {
+		led_timer = ev_timer_taskPost(led_tick, NULL, APP_IDENTIFY_TICK_MS);
+	}
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* Identify cluster                                                    */
+/* ------------------------------------------------------------------ */
+
+static u16 identify_time;
+static ev_timer_event_t *identify_timer;
+
+static const zclAttrInfo_t identify_attr_tbl[] = {
+	{ZCL_ATTRID_IDENTIFY_TIME, ZCL_DATA_TYPE_UINT16,
+	 ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, (u8 *)&identify_time},
+	{ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ,
+	 (u8 *)&cluster_rev},
+};
+
+static void identify_stop(void)
+{
+	identify_active = false;
+	led_apply();
+}
+
+/* Blinks every tick and counts the Identify Time attribute down once a second. */
+static int identify_tick(void *arg)
+{
+	static bool second;
+
+	ARG_UNUSED(arg);
+
+	identify_blink_on = !identify_blink_on;
+	led_apply();
+
+	second = !second;
+	if (second) {
+		return APP_IDENTIFY_TICK_MS;
+	}
+
+	if (identify_time > 0U) {
+		identify_time--;
+	}
+	if (identify_time == 0U) {
+		identify_timer = NULL;
+		identify_stop();
+		return -1;
+	}
+
+	return APP_IDENTIFY_TICK_MS;
+}
+
+static status_t identify_cb(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload)
+{
+	ARG_UNUSED(addr_info);
+
+	if ((cmd_id != ZCL_CMD_IDENTIFY) || (payload == NULL)) {
+		return ZCL_STA_SUCCESS;
+	}
+
+	identify_time = ((zcl_identifyCmd_t *)payload)->identifyTime;
+
+	if (identify_time == 0U) {
+		if (identify_timer != NULL) {
+			(void)ev_timer_taskCancel(&identify_timer);
+		}
+		identify_stop();
+	} else if (identify_timer == NULL) {
+		identify_active = true;
+		identify_blink_on = true;
+		led_apply();
+		identify_timer = ev_timer_taskPost(identify_tick, NULL, APP_IDENTIFY_TICK_MS);
+	}
+
+	return ZCL_STA_SUCCESS;
+}
+
+void app_basic_set_model_id(const char *model_id)
+{
+	size_t n = strnlen(model_id, APP_BASIC_STR_MAX);
+
+	memcpy(model_id_str, model_id, n);
+	model_id_str[n] = '\0';
+	basic_model_id[0] = (u8)n;
+	memcpy(&basic_model_id[1], model_id_str, n);
+}
+
+void app_common_clusters(zcl_specClusterInfo_t *clusters)
+{
+	basic_mfr_name[0] = sizeof(APP_MANUFACTURER) - 1U;
+	memcpy(&basic_mfr_name[1], APP_MANUFACTURER, sizeof(APP_MANUFACTURER) - 1U);
+	app_basic_set_model_id(model_id_str);
+	basic_sw_build[0] = sizeof(APP_SW_BUILD_ID) - 1U;
+	memcpy(&basic_sw_build[1], APP_SW_BUILD_ID, sizeof(APP_SW_BUILD_ID) - 1U);
+	basic_date_code[0] = sizeof(APP_DATE_CODE) - 1U;
+	memcpy(&basic_date_code[1], APP_DATE_CODE, sizeof(APP_DATE_CODE) - 1U);
+
+	clusters[0] = (zcl_specClusterInfo_t){
+		.clusterId = ZCL_CLUSTER_GEN_BASIC,
+		.manuCode = 0U,
+		.attrNum = ARRAY_SIZE(basic_attr_tbl),
+		.attrTbl = basic_attr_tbl,
+		.clusterRegisterFunc = zcl_basic_register,
+		.clusterAppCb = NULL,
+	};
+	clusters[1] = (zcl_specClusterInfo_t){
+		.clusterId = ZCL_CLUSTER_GEN_IDENTIFY,
+		.manuCode = 0U,
+		.attrNum = ARRAY_SIZE(identify_attr_tbl),
+		.attrTbl = identify_attr_tbl,
+		.clusterRegisterFunc = zcl_identify_register,
+		.clusterAppCb = identify_cb,
+	};
+}
+
+void zcl_rx_handler(void *p);
+
+void app_zcl_init(zcl_hookFn_t hook)
+{
+#ifdef APP_HAS_LED
+	if (gpio_is_ready_dt(&led)) {
+		(void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
+	}
+	led_search_start();
+	led_apply();
+#endif
+
+	zcl_init(hook);
+}
+
+void app_endpoint_add(uint8_t endpoint, af_simple_descriptor_t *desc,
+		      zcl_specClusterInfo_t *clusters, uint8_t num)
+{
+	if (af_simpleDescGet(endpoint) == NULL) {
+		if (!af_endpointRegister(endpoint, desc, (af_endpoint_cb_t)zcl_rx_handler, NULL)) {
+			LOG_WRN("endpoint %u register failed", endpoint);
+		}
+	}
+
+	zcl_register(endpoint, num, clusters);
+}
+
+void app_endpoint_register(af_simple_descriptor_t *desc, zcl_specClusterInfo_t *clusters,
+			   uint8_t num, zcl_hookFn_t hook)
+{
+	app_zcl_init(hook);
+	app_endpoint_add(APP_ENDPOINT, desc, clusters, num);
+}
+
+/* ------------------------------------------------------------------ */
+/* Buttons                                                             */
+/* ------------------------------------------------------------------ */
+
+#if DT_NODE_HAS_STATUS_OKAY(DT_ALIAS(sw0)) || DT_NODE_HAS_STATUS_OKAY(DT_ALIAS(sw1))
+#define APP_HAS_BUTTONS 1
+
+struct app_button {
+	struct gpio_dt_spec spec;
+	struct gpio_callback cb;
+	struct k_work_delayable debounce;
+	struct k_work_delayable long_press;
+	uint8_t idx;
+	bool pressed;
+	bool pm_held;
+};
+
+static struct app_button buttons[] = {
+#if DT_NODE_HAS_STATUS_OKAY(DT_ALIAS(sw0))
+	{.spec = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios), .idx = 0U},
+#endif
+#if DT_NODE_HAS_STATUS_OKAY(DT_ALIAS(sw1))
+	{.spec = GPIO_DT_SPEC_GET(DT_ALIAS(sw1), gpios), .idx = 1U},
+#endif
+};
+
+static app_button_cb_t button_user_cb;
+
+static void button_task(void *arg)
+{
+	uintptr_t v = (uintptr_t)arg;
+
+	if (button_user_cb != NULL) {
+		button_user_cb((uint8_t)(v >> 1), (v & 1U) != 0U);
+	}
+}
+
+static void factory_reset_task(void *arg)
+{
+	ARG_UNUSED(arg);
+	zb_factoryReset();
+}
+
+static void button_long_press(struct k_work *work)
+{
+	ARG_UNUSED(work);
+	(void)tl_zbTaskPost(factory_reset_task, NULL);
+}
+
+static void button_debounce(struct k_work *work)
+{
+	struct app_button *btn =
+		CONTAINER_OF(k_work_delayable_from_work(work), struct app_button, debounce);
+	bool pressed = gpio_pin_get_dt(&btn->spec) > 0;
+
+	if (pressed == btn->pressed) {
+		return;
+	}
+	btn->pressed = pressed;
+
+#if defined(CONFIG_ZIGBEE_SLEEPY)
+	/* A sleepy end device stays awake while a button is down: the long press needs it */
+	if (pressed && !btn->pm_held) {
+		pm_policy_state_lock_get(PM_STATE_SOFT_OFF, PM_ALL_SUBSTATES);
+		btn->pm_held = true;
+	} else if (!pressed && btn->pm_held) {
+		pm_policy_state_lock_put(PM_STATE_SOFT_OFF, PM_ALL_SUBSTATES);
+		btn->pm_held = false;
+	}
+#endif
+
+	if (btn->idx == 0U) {
+		if (pressed) {
+			(void)k_work_reschedule(&btn->long_press, K_MSEC(APP_FACTORY_RESET_HOLD_MS));
+		} else {
+			(void)k_work_cancel_delayable(&btn->long_press);
+		}
+	}
+
+	(void)tl_zbTaskPost(button_task, (void *)(uintptr_t)(((uintptr_t)btn->idx << 1) | pressed));
+}
+
+static void button_isr(const struct device *port, struct gpio_callback *cb, uint32_t pins)
+{
+	struct app_button *btn = CONTAINER_OF(cb, struct app_button, cb);
+
+	ARG_UNUSED(port);
+	ARG_UNUSED(pins);
+	(void)k_work_reschedule(&btn->debounce, K_MSEC(APP_BUTTON_DEBOUNCE_MS));
+}
+#endif /* DT_NODE_HAS_STATUS_OKAY(sw0) || sw1 */
+
+#ifdef APP_BUTTON_WAKE
+/* Let the button end a deep sleep; the wake is a reset, init then sees the level. */
+static void button_wake_arm(const struct gpio_dt_spec *spec)
+{
+	static const struct device *const ports[] = {
+		DEVICE_DT_GET(DT_NODELABEL(gpioa)), DEVICE_DT_GET(DT_NODELABEL(gpiob)),
+		DEVICE_DT_GET(DT_NODELABEL(gpioc)), DEVICE_DT_GET(DT_NODELABEL(gpiod)),
+	};
+
+	for (size_t i = 0; i < ARRAY_SIZE(ports); i++) {
+		if (spec->port == ports[i]) {
+			(void)tlsr8258_pm_configure_gpio_wakeup(
+				(uint8_t)i, spec->pin, (spec->dt_flags & GPIO_ACTIVE_LOW) != 0U, true);
+			return;
+		}
+	}
+}
+#endif
+
+void app_buttons_init(app_button_cb_t cb)
+{
+#ifdef APP_HAS_BUTTONS
+	button_user_cb = cb;
+
+	for (size_t i = 0; i < ARRAY_SIZE(buttons); i++) {
+		struct app_button *btn = &buttons[i];
+
+		if (!gpio_is_ready_dt(&btn->spec)) {
+			continue;
+		}
+
+		k_work_init_delayable(&btn->debounce, button_debounce);
+		k_work_init_delayable(&btn->long_press, button_long_press);
+		(void)gpio_pin_configure_dt(&btn->spec, GPIO_INPUT);
+		gpio_init_callback(&btn->cb, button_isr, BIT(btn->spec.pin));
+		(void)gpio_add_callback(btn->spec.port, &btn->cb);
+		(void)gpio_pin_interrupt_configure_dt(&btn->spec, GPIO_INT_EDGE_BOTH);
+#ifdef APP_BUTTON_WAKE
+		button_wake_arm(&btn->spec);
+#endif
+#if defined(CONFIG_ZIGBEE_SLEEPY)
+		/* Woken by this very button: the press edge is gone, take the level */
+		if (gpio_pin_get_dt(&btn->spec) > 0) {
+			(void)k_work_reschedule(&btn->debounce, K_MSEC(APP_BUTTON_DEBOUNCE_MS));
+		}
+#endif
+	}
+#else
+	ARG_UNUSED(cb);
+	LOG_WRN("the board has no sw0 or sw1 alias");
+#endif
+}
+
+/* ------------------------------------------------------------------ */
+/* Bootstrap hooks                                                     */
+/* ------------------------------------------------------------------ */
+
+void zb_platform_app_register_endpoints(void)
+{
+	app_device_register();
+}
+
+bool zb_platform_app_get_fixed_join_target(struct zb_platform_bdb_fixed_target *target)
+{
+	ARG_UNUSED(target);
+	return false;
+}
+
+bool zb_platform_app_get_join_profile(struct zb_platform_bdb_join_profile *profile)
+{
+	return app_bdb_get_join_profile(profile);
+}
+
+void zb_platform_app_bootstrap_ready(void)
+{
+	app_bdb_bootstrap_ready();
+}
+
+bool zb_platform_app_enable_radio_smoke_probe(void)
+{
+	return false;
+}
+
+bool zb_platform_app_should_start_commissioning(void)
+{
+	return app_bdb_should_start_commissioning();
+}
+
+void zb_platform_app_start_commissioning(void)
+{
+	app_bdb_start_commissioning();
+}
+
+void zb_platform_app_network_left(void)
+{
+	led_search_start();
+	app_bdb_network_left();
+}
+
+void zb_platform_app_bdb_commissioning_status(uint8_t status, bool joined_network)
+{
+	app_bdb_commissioning_status(status, joined_network);
+}
+
+int main(void)
+{
+	return 0;
+}

@@ -1,0 +1,12 @@
+# The pins of examples/relay-3ch.yaml on an nRF52840-DK (for tests and checks).
+chip: nrf52840
+pins:
+  r1: P1.01
+  r2: P1.02
+  r3: P1.03
+  b1: {pin: P1.04, pull: up, inverted: true}
+  b2: {pin: P1.05, pull: up, inverted: true}
+  b3: {pin: P1.06, pull: up, inverted: true}
+  wall: {pin: P1.07, pull: up, inverted: true}
+  pair: {pin: P1.08, pull: up, inverted: true}
+  led: {pin: P1.09, inverted: true}

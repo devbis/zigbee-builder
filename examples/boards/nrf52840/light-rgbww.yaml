@@ -1,0 +1,8 @@
+# The pins of examples/light-rgbww.yaml on an nRF52840-DK (for tests and checks).
+chip: nrf52840
+pins:
+  r: P1.01
+  g: P1.02
+  b: P1.03
+  w: P1.04
+  button: {pin: P1.05, pull: up, inverted: true}

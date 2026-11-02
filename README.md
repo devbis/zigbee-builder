@@ -21,13 +21,18 @@ pins of that board (they replace the file's own `pins:` as a whole; `button` and
 | Chip | Toolchain | Status |
 |---|---|---|
 | `tlsr8258` | TC32 LLVM (`LLVM_TOOLCHAIN_PATH`) | everything; MCUboot loader, OTA, sleepy end device |
+| `nrf52840` | GNU Arm Embedded (`GNUARMEMB_TOOLCHAIN_PATH`, default: where `arm-none-eabi-gcc` is) | everything except sleep: sensors (I2C, SAADC on VDD), IAS, plugs and relays, switch, light (4 PWM channels), custom cluster; MCUboot, signed image, OTA file; no sleepy |
 | `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake end device: relays, plugs, custom clusters; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet |
 
-ESP32-H2 limits, and why: the stack has no light sleep, and its deep sleep needs a retained memory the board does not
+nRF52840: pins are `P0.13` (port 0, pin 13; `P0.09`, `P0.10` NFC and `P0.18` reset are reserved), the battery is the
+supply itself (SAADC on VDD), a light has four PWM channels. Flash: MCUboot at 0, slot 0 at 0xC000, slot 1 at 0x82000.
+The boards of the examples are in `examples/boards/nrf52840` (an nRF52840-DK).
+
+Sleep, on both: the stack has no light sleep, and its deep sleep needs a retained memory the board does not
 describe, so `sleepy: true` is an error there. OTA works through `west build --sysbuild` (MCUboot and the application
 signed for slot 0, with the development key of the Zephyr MCUboot); it needs the `tf-psa-crypto` and
 `tf-psa-crypto-drivers` modules (`west update tf-psa-crypto tf-psa-crypto-drivers` in the Zephyr workspace). The full
-image is MCUboot at 0x0, padded to 0x20000, then the signed image; the OTA file is the signed image for the coordinator.
+image is MCUboot at 0x0, padded to the start of slot 0 (0x20000 on the H2, 0xC000 on the nRF), then the signed image; the OTA file is the signed image for the coordinator.
 
 ## Layout
 - `zigbee_builder/` CLI, schema (`config.py`), resolver and renderer (`generator.py`), west build + packaging (`build.py`)

@@ -1,0 +1,9 @@
+# The pins of examples/plug-bl0937.yaml on an nRF52840-DK (for tests and checks).
+chip: nrf52840
+pins:
+  relay: P1.01
+  button: {pin: P1.02, pull: up, inverted: true}
+  led: {pin: P1.03, inverted: true}
+  cf: P1.04
+  cf1: P1.05
+  sel: P1.06

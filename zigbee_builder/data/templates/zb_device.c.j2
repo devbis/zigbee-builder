@@ -79,8 +79,21 @@ static bool {{ c.id }}_read(void)
 	struct adc_sequence seq = {.buffer = &mv, .buffer_size = sizeof(mv)};
 
 	if (!adc_is_ready_dt(&{{ c.id }}_adc) || adc_channel_setup_dt(&{{ c.id }}_adc) != 0 ||
-	    adc_sequence_init_dt(&{{ c.id }}_adc, &seq) != 0 || adc_read_dt(&{{ c.id }}_adc, &seq) != 0 ||
-	    mv <= 0) {
+	    adc_sequence_init_dt(&{{ c.id }}_adc, &seq) != 0 || adc_read_dt(&{{ c.id }}_adc, &seq) != 0) {
+		return false;
+	}
+{% if c.raw_to_mv %}
+	{
+		/* the ADC gives raw counts: scale them by the gain, the reference and the resolution */
+		int32_t v = mv;
+
+		if (adc_raw_to_millivolts_dt(&{{ c.id }}_adc, &v) != 0) {
+			return false;
+		}
+		mv = (int16_t)v;
+	}
+{% endif %}
+	if (mv <= 0) {
 		return false;
 	}
 	{{ c.id }}_voltage = mv;

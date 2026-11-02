@@ -334,3 +334,65 @@ def test_esp32h2_has_no_battery_adc_pwm():
         d["zigbee"]["chip"] = "esp32h2"                              # the TLSR pin names do not exist there
         with pytest.raises(ConfigError, match=msg):
             resolve(Config.model_validate(d))
+
+
+NRF = sorted(p.stem for p in (EX / "boards/nrf52840").glob("*.yaml"))
+
+
+def nrf(name):
+    return load(str(EX / f"{name}.yaml"), str(EX / "boards/nrf52840" / f"{name}.yaml"))
+
+
+@pytest.mark.parametrize("name", NRF)
+def test_every_example_on_nrf52840(name, tmp_path):
+    cfg = nrf(name)
+    assert cfg.zigbee.chip == "nrf52840"
+    render(cfg, tmp_path, EX)
+    # the name of the overlay is the board's, qualifiers joined with an underscore
+    assert (tmp_path / "nrf52840dk_nrf52840.overlay").exists()
+    conf = (tmp_path / "prj.conf").read_text()
+    assert "CONFIG_IEEE802154_NRF5=y" in conf and "CONFIG_ZIGBEE_STACK_SIZE=4096" in conf
+
+
+def test_nrf52840_peripherals(tmp_path):
+    render(nrf("temp-humidity-sht30"), tmp_path, EX)
+    ov = (tmp_path / "nrf52840dk_nrf52840.overlay").read_text()
+    assert "NRF_PSEL(TWIM_SDA, 0, 26)" in ov and "NRF_PSEL(TWIM_SCL, 0, 27)" in ov
+    assert "zephyr,input-positive = <NRF_SAADC_VDD>" in ov
+    # the SAADC gives counts, not millivolts like the TLSR's VBAT mode
+    assert "adc_raw_to_millivolts_dt" in (tmp_path / "zb_device.c").read_text()
+    t = tmp_path / "tlsr"
+    render(load(str(EX / "temp-humidity-sht30.yaml")), t, EX)
+    assert "adc_raw_to_millivolts_dt" not in (t / "zb_device.c").read_text()
+
+
+def test_nrf52840_light_channels(tmp_path):
+    render(nrf("light-rgbww"), tmp_path, EX)
+    ov = (tmp_path / "nrf52840dk_nrf52840.overlay").read_text()
+    for i, pin in enumerate((1, 2, 3, 4)):
+        assert f"NRF_PSEL(PWM_OUT{i}, 1, {pin})" in ov
+    d = nrf("light-rgbww").model_dump()
+    d["pins"]["c"] = "P1.06"
+    d["components"][0]["cool"] = "c"
+    with pytest.raises(ConfigError, match="5 PWM channels asked"):
+        resolve(Config.model_validate(d))
+
+
+def test_nrf52840_pins():
+    d = nrf("plug-relay").model_dump()
+    for bad, msg in (("P0.09", "reserved"), ("P0.18", "reserved"), ("P2.00", "does not exist"),
+                     ("P0.32", "does not exist"), ("PD2", "does not exist")):
+        d["pins"]["relay"] = bad
+        with pytest.raises(ConfigError, match=msg):
+            resolve(Config.model_validate(d))
+    d["pins"]["relay"] = "P0.5"                 # the same pin as P0.05
+    d["pins"]["led"] = {"pin": "P0.05"}
+    with pytest.raises(ConfigError, match="used twice"):
+        resolve(Config.model_validate(d))
+
+
+def test_nrf52840_no_sleepy():
+    d = nrf("temp-humidity-sht30").model_dump()
+    d["zigbee"]["sleepy"] = True
+    with pytest.raises(ConfigError, match="not supported on nrf52840"):
+        resolve(Config.model_validate(d))

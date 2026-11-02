@@ -95,6 +95,7 @@ def _kind_battery_adc(ctx: Ctx, c, spec, bus_label):
     full = int(c.model_extra.get("full_mv", 3000))
     ctx.comps[c.id] = {
         "id": ident(c.id), "kind": "battery_adc", "empty_mv": empty, "full_mv": full,
+        "raw_to_mv": bool(ctx.chip.d["battery_adc"].get("raw_to_mv")),
         "chans": {"voltage": None, "percent": None}, "includes": ["<zephyr/drivers/adc.h>"],
     }
     ctx.kconfig += ["CONFIG_ADC=y"]
@@ -196,7 +197,8 @@ def _kind_pwm_light(ctx: Ctx, c, spec, bus_label):
         raise ConfigError(f"component '{c.id}': mireds: [cool, warm], like [153, 370]")
     pwm = ctx.chip.d["pwm"]
     ctx.overlay.append(jinja2.Template((ctx.chip.dir / pwm["template"]).read_text()).render(
-        pins=[{"pin": resolved[ch][0].name.upper(), "channel": chans[ch]["channel"]} for ch in chans]))
+        pins=[{"pin": resolved[ch][0].name.upper(), "channel": chans[ch]["channel"],
+               "port": resolved[ch][0].port, "num": resolved[ch][0].num} for ch in chans]))
     has_rgb, has_w = "red" in pins, "warm" in pins
     caps = 0
     if has_rgb:
@@ -286,7 +288,7 @@ def resolve(cfg: Config):
             raise ConfigError(f"i2c '{b.id}': {sda.name}/{scl.name} is not a hardware I2C pair on {chip.name}")
         if hw:
             tpl = (chip.dir / hw["template"]).read_text()
-            ctx.overlay.append(jinja2.Template(tpl).render(sda=sda.name, scl=scl.name))
+            ctx.overlay.append(jinja2.Template(tpl).render(sda=sda.name, scl=scl.name, sda_pin=sda, scl_pin=scl))
             bus_labels[b.id] = "&i2c0"
         else:
             bus_nodes[b.id] = (f"i2c_{ident(b.id)}", sda, scl)

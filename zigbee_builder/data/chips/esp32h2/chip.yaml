@@ -1,6 +1,5 @@
 name: esp32h2
 board: esp32h2_devkitm/esp32h2     # the board with its qualifiers, as west takes it
-board_file: esp32h2_devkitm_esp32h2   # the name of the overlay file Zephyr picks up
 toolchain: zephyr_sdk              # Zephyr SDK (riscv64-zephyr-elf), not the TC32 LLVM
 build: {driver: sysbuild}          # one west build --sysbuild: MCUboot, and the app signed for slot 0
 roles: [router, end_device]

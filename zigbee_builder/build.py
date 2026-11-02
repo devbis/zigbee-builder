@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from datetime import date
@@ -18,7 +19,7 @@ def _env(env_file: Path | None, toolchain: str = "tc32_llvm") -> dict:
     env = dict(os.environ)
     if env_file and env_file.exists():
         names = ("ZEPHYR_BASE", "LLVM_TOOLCHAIN_PATH", "ZEPHYR_EXTRA_MODULES", "WEST", "PYTHON", "MCUBOOT_DIR",
-                 "ZEPHYR_SDK_INSTALL_DIR")
+                 "ZEPHYR_SDK_INSTALL_DIR", "GNUARMEMB_TOOLCHAIN_PATH")
         script = f'. "{env_file}"; ' + "; ".join(f'echo "{n}=${{{n}:-}}"' for n in names)
         out = subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=True)
         for line in out.stdout.splitlines():
@@ -28,6 +29,12 @@ def _env(env_file: Path | None, toolchain: str = "tc32_llvm") -> dict:
     need = ["ZEPHYR_BASE", "ZEPHYR_EXTRA_MODULES"]
     if toolchain == "tc32_llvm":
         need.append("LLVM_TOOLCHAIN_PATH")
+    elif toolchain == "gnuarmemb":
+        if not env.get("GNUARMEMB_TOOLCHAIN_PATH"):   # where arm-none-eabi-gcc is: <path>/bin/arm-none-eabi-gcc
+            gcc = shutil.which("arm-none-eabi-gcc", path=env.get("PATH"))
+            if gcc:
+                env["GNUARMEMB_TOOLCHAIN_PATH"] = str(Path(gcc).parent.parent)   # not resolved: Homebrew links the tools from several formulas
+        need.append("GNUARMEMB_TOOLCHAIN_PATH")
     else:
         if not env.get("ZEPHYR_SDK_INSTALL_DIR"):     # the newest SDK in the home directory
             sdks = sorted(Path.home().glob("zephyr-sdk-*"))
@@ -92,11 +99,11 @@ def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> 
 def _build_sysbuild(project: Path, out: Path, info: dict, env: dict, west: str) -> list[Path]:
     """One west build --sysbuild with the Zephyr SDK: MCUboot and the signed application image.
     The full image is the loader, padded to the slot, and the signed image."""
-    env["ZEPHYR_TOOLCHAIN_VARIANT"] = "zephyr"
+    env["ZEPHYR_TOOLCHAIN_VARIANT"] = "gnuarmemb" if info["toolchain"] == "gnuarmemb" else "zephyr"
     build = out / info["name"]
     subprocess.run(
         [west, "build", "--sysbuild", "-p", "always", "-b", info["board"], "-d", str(build), str(project), "--",
-         f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
+         "-DSB_CONFIG_BOOTLOADER_MCUBOOT=y", f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
          f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
         cwd=env["ZEPHYR_BASE"], env=env, check=True)
     app = build / project.name                       # sysbuild names the application by its directory

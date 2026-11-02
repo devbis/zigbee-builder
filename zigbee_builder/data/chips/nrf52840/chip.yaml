@@ -1,0 +1,31 @@
+name: nrf52840
+board: nrf52840dk/nrf52840
+toolchain: gnuarmemb               # GNU Arm Embedded (arm-none-eabi-gcc); GNUARMEMB_TOOLCHAIN_PATH
+build: {driver: sysbuild}          # MCUboot and the application signed for slot 0
+roles: [router, end_device]
+# No sleepy end device: the stack has no light sleep, and its deep sleep needs a retained memory
+# the board does not describe. An end device stays awake.
+sleep: null
+ota: true
+snippet: null
+pins:
+  format: port_dot                 # P0.13 is port 0, pin 13
+  ports: {0: 32, 1: 16}
+  node: "gpio{port}"
+  # P0.09 and P0.10 are the NFC antenna pins; P0.18 is nRESET on the board
+  reserved: ["P0.09", "P0.10", "P0.18"]
+wake: none
+i2c_hw: {any: {template: i2c_hw.dtsi.j2}}     # TWIM, any pin pair
+led0_node: true                    # the DK has led0 (P0.13, active low): the overlay moves it
+# The battery is the supply itself: SAADC measures VDD
+battery_adc: {template: battery_adc.dtsi.j2, raw_to_mv: true}
+# PWM: four channels of one instance, on any pins, in the order the light names them
+pwm:
+  device: pwm0
+  period_cycles: 12000             # 16 MHz counter: 1.3 kHz
+  assign: sequential
+  channels: 4
+  template: pwm.dtsi.j2
+kconfig_all: [CONFIG_IEEE802154_NRF5=y, CONFIG_ZIGBEE_STACK_SIZE=4096]
+# MCUboot at 0, slot 0 at 0xC000 (472K), slot 1 at 0x82000; the NV storage at 0xF8000 stays out of the image
+flash: {loader_end: 0xC000, slot_size: 0x76000}

@@ -1,0 +1,6 @@
+# The pins of examples/leak-sensor.yaml on an nRF52840-DK (for tests and checks).
+chip: nrf52840
+pins:
+  probe: {pin: P1.01, pull: down}
+  button: {pin: P1.02, pull: up, inverted: true}
+  led: {pin: P1.03}

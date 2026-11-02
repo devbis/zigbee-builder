@@ -1,0 +1,21 @@
+&pinctrl {
+	pwm0_zbr_default: pwm0_zbr_default {
+		group1 {
+			psels = {% for p in pins %}<NRF_PSEL(PWM_OUT{{ p.channel }}, {{ p.port }}, {{ p.num }})>{{ ",\n\t\t\t\t" if not loop.last }}{% endfor %};
+		};
+	};
+
+	pwm0_zbr_sleep: pwm0_zbr_sleep {
+		group1 {
+			psels = {% for p in pins %}<NRF_PSEL(PWM_OUT{{ p.channel }}, {{ p.port }}, {{ p.num }})>{{ ",\n\t\t\t\t" if not loop.last }}{% endfor %};
+			low-power-enable;
+		};
+	};
+};
+
+&pwm0 {
+	status = "okay";
+	pinctrl-0 = <&pwm0_zbr_default>;
+	pinctrl-1 = <&pwm0_zbr_sleep>;
+	pinctrl-names = "default", "sleep";
+};

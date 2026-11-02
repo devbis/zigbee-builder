@@ -1,0 +1,33 @@
+# Two-button battery wall switch (sleepy end device): each button is its own endpoint and
+# sends Toggle to whatever it is bound to (a light, a group). The pins wake the device.
+zigbee:
+  name: battery-switch
+  manufacturer: DEVBIS
+  model: SWITCH-GEN-2
+  chip: tlsr8258
+  ota_image_type: 0x5B30
+
+pins:
+  btn_a: {pin: PA4, pull: up, inverted: true}
+  btn_b: {pin: PA5, pull: up, inverted: true}
+  pair: {pin: PC0, pull: up, inverted: true}     # hold 5 s: factory reset
+  led: {pin: PB4}
+
+button: pair
+status_led: led
+
+components:
+  - {id: a, type: binary_input, pin: btn_a, debounce: 30ms}
+  - {id: b, type: binary_input, pin: btn_b, debounce: 30ms}
+  - {id: bat, type: battery_adc}
+
+endpoints:
+  - id: 1
+    device: on_off_light_switch
+    clusters:
+      power_config: {source: bat}
+      on_off_switch: {source: a, action: toggle}
+  - id: 2
+    device: on_off_light_switch
+    clusters:
+      on_off_switch: {source: b, action: toggle}

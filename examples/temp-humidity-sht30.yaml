@@ -1,0 +1,33 @@
+# Battery temperature/humidity sensor: SHT30 on hardware I2C.
+# Equivalent of tuya-ts0201-ih-k009 in zigbee-devices-firmware.
+zigbee:
+  name: th-sht30
+  manufacturer: DEVBIS
+  model: TH-GEN-SHT30
+  chip: tlsr8258
+  role: end_device          # sleepy by default
+  poll_interval: 60s
+  ota_image_type: 0x5B20
+
+pins:
+  sda: PC2
+  scl: PC3
+  button: {pin: PC0, pull: up, inverted: true}
+  led: {pin: PB4}
+
+button: button
+status_led: led
+
+i2c: {sda: sda, scl: scl}
+
+components:
+  - {id: climate, type: sht3x, address: 0x44}
+  - {id: bat, type: battery_adc}
+
+endpoints:
+  - id: 1
+    device: temperature_sensor
+    clusters:
+      power_config: {source: bat}
+      temperature: {source: climate.temperature}
+      humidity: {source: climate.humidity}

@@ -1,0 +1,41 @@
+# Three-channel relay (router): one endpoint per lamp, a button for each, and a fourth
+# endpoint, a wall switch input that controls other devices through its binding.
+zigbee:
+  name: relay-3ch
+  manufacturer: DEVBIS
+  model: RELAY-GEN-3
+  chip: tlsr8258
+  role: router
+  ota_image_type: 0x5A12
+
+pins:
+  r1: PD2
+  r2: PD3
+  r3: PD4
+  b1: {pin: PA4, pull: up, inverted: true}
+  b2: {pin: PA5, pull: up, inverted: true}
+  b3: {pin: PA6, pull: up, inverted: true}
+  wall: {pin: PA7, pull: up, inverted: true}
+  pair: {pin: PC0, pull: up, inverted: true}
+  led: {pin: PB1, inverted: true}
+
+button: pair
+status_led: led
+
+components:
+  - {id: lamp1, type: relay, pin: r1, toggle_input: btn1}
+  - {id: lamp2, type: relay, pin: r2, toggle_input: btn2}
+  - {id: lamp3, type: relay, pin: r3, toggle_input: btn3}
+  - {id: btn1, type: binary_input, pin: b1}
+  - {id: btn2, type: binary_input, pin: b2}
+  - {id: btn3, type: binary_input, pin: b3}
+  - {id: wall_switch, type: binary_input, pin: wall}
+
+endpoints:
+  - {id: 1, device: on_off_output, clusters: {groups: , on_off: {source: lamp1}}}
+  - {id: 2, device: on_off_output, clusters: {groups: , on_off: {source: lamp2}}}
+  - {id: 3, device: on_off_output, clusters: {groups: , on_off: {source: lamp3}}}
+  - id: 4
+    device: on_off_light_switch
+    clusters:
+      on_off_switch: {source: wall_switch, action: toggle}

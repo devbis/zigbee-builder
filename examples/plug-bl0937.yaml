@@ -1,0 +1,42 @@
+# Smart plug with energy monitoring (router): relay, button toggles it, BL0937 meter.
+# Pin map of the Zbeacon TS011F. For a plug without monitoring drop the energy_meter
+# component and the two measurement clusters (see plug-relay.yaml).
+zigbee:
+  name: plug-bl0937
+  manufacturer: DEVBIS
+  model: PLUG-GEN-BL0937
+  chip: tlsr8258
+  role: router
+  ota_image_type: 0x5A10
+
+pins:
+  relay: PD2
+  button: {pin: PA0, pull: up, inverted: true}
+  led: {pin: PB1, inverted: true}
+  cf: PB4
+  cf1: PB5
+  sel: PD3
+
+button: button
+status_led: led
+
+components:
+  - {id: relay1, type: relay, pin: relay, status_led: opposite, toggle_on_button: true}
+  - id: meter
+    type: bl0937
+    cf: cf
+    cf1: cf1
+    sel: sel
+    # calibration: datasheet defaults, check against a known load
+    shunt_micro_ohms: 1000
+    voltage_divider_milli: 2351000
+    cf_pulses_per_kwh: 3200
+
+endpoints:
+  - id: 1
+    device: smart_plug
+    clusters:
+      groups:
+      on_off: {source: relay1, startup: previous}
+      electrical_measurement: {source: meter}
+      metering: {source: meter}

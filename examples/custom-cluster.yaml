@@ -1,0 +1,40 @@
+# A router with a manufacturer specific cluster (settings in NV, a command, a C plugin),
+# and the abstract Binary Input / Analog Input clusters for things Zigbee has no device type for.
+zigbee:
+  name: custom-demo
+  manufacturer: DEVBIS
+  model: CUSTOM-DEMO
+  chip: tlsr8258
+  role: router
+  ota_image_type: 0x5A20
+
+pins:
+  contact: {pin: PA4, pull: up}
+  button: {pin: PC0, pull: up, inverted: true}
+  led: {pin: PB1, inverted: true}
+
+button: button
+status_led: led
+
+components:
+  - {id: input1, type: binary_input, pin: contact}
+
+custom_clusters:
+  - name: heater
+    id: 0xFC11
+    manufacturer_code: 0x1234
+    attributes:
+      - {id: 0x0000, name: mode, type: enum8, access: rw, persist: true, default: 0}
+      - {id: 0x0001, name: temp_offset, type: int16, access: rw, persist: true, default: 0}
+      - {id: 0x0002, name: runtime_s, type: uint32, access: r, report: {min: 30s, max: 10min, change: 60}}
+    commands:
+      - {id: 0, name: reset}
+
+plugins: [plugins/heater.c]
+
+endpoints:
+  - id: 1
+    device: custom
+    clusters:
+      binary_input: {source: input1}
+      heater:

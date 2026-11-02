@@ -1,0 +1,26 @@
+# Smart plug / relay without monitoring (router).
+zigbee:
+  name: plug-relay
+  manufacturer: DEVBIS
+  model: PLUG-GEN-RELAY
+  chip: tlsr8258
+  role: router
+  ota_image_type: 0x5A11
+
+pins:
+  relay: PD2
+  button: {pin: PA0, pull: up, inverted: true}
+  led: {pin: PB1, inverted: true}
+
+button: button
+status_led: led
+
+components:
+  - {id: relay1, type: relay, pin: relay, status_led: opposite, toggle_on_button: true}
+
+endpoints:
+  - id: 1
+    device: on_off_output
+    clusters:
+      groups:
+      on_off: {source: relay1, startup: previous}

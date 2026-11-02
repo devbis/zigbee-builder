@@ -1,0 +1,28 @@
+# Battery leak/window sensor (IAS Zone, contact switch): a probe switch wakes the device.
+# Change the pin to move it to another board; change zone_type for another kind of sensor.
+zigbee:
+  name: leak-sensor
+  manufacturer: DEVBIS
+  model: LEAK-GEN
+  chip: tlsr8258
+  poll_interval: 60s       # parent poll = one wake; the battery reports every 6 h
+  ota_image_type: 0x5B22
+
+pins:
+  probe: {pin: PC2, pull: down}
+  button: {pin: PC0, pull: up, inverted: true}
+  led: {pin: PB4}
+
+button: button
+status_led: led
+
+components:
+  - {id: leak, type: binary_input, pin: probe, debounce: 50ms}
+  - {id: bat, type: battery_adc}
+
+endpoints:
+  - id: 1
+    device: ias_zone
+    clusters:
+      power_config: {source: bat}
+      ias_zone: {zone_type: water_sensor, source: leak}

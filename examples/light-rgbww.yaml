@@ -1,0 +1,39 @@
+# RGB + warm white lamp (router): On/Off, Level and Color Control (hue/saturation, xy, colour
+# temperature) on the PWM channels. The pins must be able to output PWM; the builder gives every
+# pin a channel of its own and says so if two of them need the same one.
+zigbee:
+  name: light-rgbww
+  manufacturer: DEVBIS
+  model: LIGHT-GEN-RGBW
+  chip: tlsr8258
+  role: router
+  ota_image_type: 0x5A30
+
+pins:
+  r: PB4
+  g: PB5
+  b: PC2
+  w: PC3
+  button: {pin: PA0, pull: up, inverted: true}
+
+button: button
+
+components:
+  - id: lamp
+    type: pwm_light
+    red: r
+    green: g
+    blue: b
+    warm: w
+    mireds: [153, 500]      # cool .. warm
+    transition: 300ms
+    toggle_on_button: true
+
+endpoints:
+  - id: 1
+    device: extended_color_light
+    clusters:
+      groups:
+      on_off: {source: lamp, startup: previous}
+      level: {source: lamp}
+      color_control: {source: lamp}

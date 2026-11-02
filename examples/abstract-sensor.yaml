@@ -1,0 +1,25 @@
+# Abstract device for things Zigbee has no device type for: a contact as Binary Input and the
+# battery voltage as Analog Input (volts, a float), on a sleepy end device.
+zigbee:
+  name: abstract-sensor
+  manufacturer: DEVBIS
+  model: ABSTRACT-1
+  chip: tlsr8258
+  ota_image_type: 0x5B40
+
+pins:
+  contact: {pin: PA4, pull: up}
+  button: {pin: PC0, pull: up, inverted: true}
+
+button: button
+
+components:
+  - {id: input1, type: binary_input, pin: contact}
+  - {id: bat, type: battery_adc}
+
+endpoints:
+  - id: 1
+    device: custom
+    clusters:
+      binary_input: {source: input1}
+      analog_input: {source: bat.voltage, scale: 1}     # base unit volts

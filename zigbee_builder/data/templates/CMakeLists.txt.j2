@@ -31,6 +31,7 @@ target_sources(app PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}/{{ f }}{% endfor %}
   ${CMAKE_CURRENT_LIST_DIR}/runtime/zbr.c
   ${CMAKE_CURRENT_LIST_DIR}/runtime/zbr_input.c
+  ${CMAKE_CURRENT_LIST_DIR}/runtime/zbr_service.c
   ${CMAKE_CURRENT_LIST_DIR}/runtime/zbr_store.c{% if onoffs %}
   ${CMAKE_CURRENT_LIST_DIR}/runtime/zbr_onoff.c{% endif %}{% if lights %}
   ${CMAKE_CURRENT_LIST_DIR}/runtime/zbr_light.c{% endif %}{% if switches %}

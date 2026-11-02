@@ -90,6 +90,32 @@ class CustomCluster(Strict):
     commands: list[CustomCommand] = []   # received; handled by the plugin's on_command
 
 
+class ServiceCfg(Strict):
+    """The buttons that join and reset the device when held: see zbr_service.c."""
+    hold: int = 5                      # seconds
+    search_time: int = 60              # seconds the search window stays open
+    inputs: Literal["any"] | list[str] = []
+
+    @field_validator("hold", "search_time", mode="before")
+    @classmethod
+    def _t(cls, v):
+        return seconds(v)
+
+    @field_validator("hold")
+    @classmethod
+    def _hold(cls, v):
+        if not 3 <= v <= 10:
+            raise ValueError("hold: 3 to 10 seconds")
+        return v
+
+    @field_validator("search_time")
+    @classmethod
+    def _search(cls, v):
+        if not 10 <= v <= 900:
+            raise ValueError("search_time: 10 to 900 seconds")
+        return v
+
+
 class EndpointCfg(Strict):
     id: int = Field(ge=1, le=240)
     device: str = "custom"
@@ -106,7 +132,8 @@ class Config(Strict):
     endpoints: list[EndpointCfg]
     custom_clusters: list[CustomCluster] = []
     plugins: list[str] = []            # C files, relative to the YAML
-    button: str | None = None          # pin name from pins: -> sw0
+    button: str | None = None          # a pin of pins:, the service button (short for service: inputs: [it])
+    service: ServiceCfg | None = None
     status_led: str | None = None      # pin name from pins: -> led0
 
     def pin_cfg(self, ref: str) -> PinCfg:

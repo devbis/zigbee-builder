@@ -11,7 +11,7 @@ import jinja2
 import yaml
 
 from .chip import Chip, ConfigError, DATA, Pin
-from .config import Config
+from .config import ComponentCfg, Config
 from .units import millis, seconds
 
 ACCESS = {"R": "ACCESS_CONTROL_READ", "RW": "(ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE)",
@@ -121,8 +121,17 @@ def _kind_binary_input(ctx: Ctx, c, spec, bus_label):
         "id": ident(c.id), "kind": "binary_input", "label": label, "debounce": deb,
         "wake": bool(c.model_extra.get("wake", True)), "chans": {"active": None}, "includes": [],
         "users": [],   # (callback statements), filled by the clusters that use it
-        "initial": 2,
+        "initial": 2, "service": False,
     }
+
+
+def _toggle_input(ctx: Ctx, cid: str, opts: dict):
+    """toggle_input: an input; toggle_on_button: the service button's pin (button:)."""
+    if opts.get("toggle_on_button"):
+        if not ctx.cfg.button:
+            raise ConfigError(f"component '{cid}': toggle_on_button needs button: (the pin of the button)")
+        return "svc_button"
+    return opts.get("toggle_input")
 
 
 def _kind_relay(ctx: Ctx, c, spec, bus_label):
@@ -140,8 +149,7 @@ def _kind_relay(ctx: Ctx, c, spec, bus_label):
         raise ConfigError(f"component '{c.id}': status_led must be none, same or opposite")
     ctx.comps[c.id] = {
         "id": ident(c.id), "kind": "relay", "label": label, "led": led, "chans": {},
-        "toggle": bool(c.model_extra.get("toggle_on_button", False)),
-        "toggle_input": c.model_extra.get("toggle_input"), "includes": [], "users": [],
+        "toggle_input": _toggle_input(ctx, c.id, c.model_extra), "includes": [], "users": [],
     }
 
 
@@ -212,7 +220,7 @@ def _kind_pwm_light(ctx: Ctx, c, spec, bus_label):
         "transition_ms": millis(me.get("transition", "300ms")), "mired_min": mir[0], "mired_max": mir[1],
         "store_item": 0xA0 + ctx.n_store - 1, "caps": caps, "has_rgb": has_rgb, "has_ct": "cool" in pins,
         "color_mode": 2 if (has_w and "cool" in pins) else 0, "mireds": min(max(370, mir[0]), mir[1]),
-        "ep": None, "toggle": bool(me.get("toggle_on_button", False)), "toggle_input": me.get("toggle_input"),
+        "ep": None, "toggle_input": _toggle_input(ctx, c.id, me),
     }
     ctx.kconfig += ["CONFIG_PWM=y"]
     ctx.comps[c.id] = comp
@@ -309,6 +317,33 @@ def resolve(cfg: Config):
             ctx.comps[c.id]["bus_id"] = bus_id
             comp_nodes.setdefault(bus_id, []).append(ctx.comps[c.id]["dt_node"])
 
+    # --- service inputs: the buttons whose long press joins and resets
+    if cfg.button:
+        _kind_binary_input(ctx, ComponentCfg(id="svc_button", type="binary_input", pin=cfg.button), None, None)
+    svc = cfg.service
+    service_ids = []
+    if svc and svc.inputs == "any":
+        service_ids = [i for i, c in ctx.comps.items() if c["kind"] == "binary_input"]
+        if not service_ids:
+            raise ConfigError("service: inputs: any, but the device has no binary_input component")
+    elif svc:
+        for i in svc.inputs:
+            comp = ctx.comps.get(i)
+            if comp is None or comp["kind"] != "binary_input":
+                raise ConfigError(f"service: inputs: '{i}' is not a binary_input component")
+            service_ids.append(i)
+    if cfg.button:
+        service_ids = list(dict.fromkeys(["svc_button", *service_ids]))
+    for i in service_ids:
+        comp = ctx.comps[i]
+        if sleepy and not comp["wake"]:
+            raise ConfigError(f"service input '{i}': a sleepy device needs wake: true on it")
+        comp["service"] = True
+    service = {"hold_ms": (svc.hold if svc else 5) * 1000, "search_ms": (svc.search_time if svc else 60) * 1000,
+               "inputs": service_ids, "on_boot": not service_ids}
+    if not service_ids:
+        service["search_ms"] = 0              # no button: the search stays open until the device joins
+
     # i2c bus nodes: hw bus gets children under &i2c0, soft bus is a gpio-i2c node
     overlay_tail = []
     for b in buses:
@@ -329,18 +364,7 @@ def resolve(cfg: Config):
     if ctx.inputs:
         overlay_tail.append("/ {\n\tzbr_inputs {\n\t\tcompatible = \"gpio-keys\";\n" + "".join(ctx.inputs) + "\t};\n};\n")
 
-    # button / led
-    if cfg.button:
-        p, pc = gpio(cfg.button)
-        flags = ["GPIO_ACTIVE_LOW" if pc.inverted else "GPIO_ACTIVE_HIGH"]
-        if pc.pull == "up":
-            flags.append("GPIO_PULL_UP")
-        elif pc.pull == "down":
-            flags.append("GPIO_PULL_DOWN")
-        overlay_tail.append(
-            f"/ {{\n\taliases {{ sw0 = &button0; }};\n\tbuttons {{\n\t\tcompatible = \"gpio-keys\";\n"
-            f"\t\tbutton0: button_0 {{\n\t\t\tgpios = <&{p.node} {p.num} ({' | '.join(flags)})>;\n"
-            f"\t\t\tlabel = \"Button\";\n\t\t}};\n\t}};\n}};\n")
+    # led
     if cfg.status_led:
         p, pc = gpio(cfg.status_led)
         pol = "GPIO_ACTIVE_LOW" if pc.inverted else "GPIO_ACTIVE_HIGH"
@@ -460,7 +484,7 @@ def resolve(cfg: Config):
 
     return {
         "cfg": cfg, "chip": chip, "sleepy": sleepy, "power": power, "eps": eps, "ctx": ctx,
-        "bindings": bindings, "defaults": defaults, "inputs": ctx.inputs, "inputs_used": bool(ctx.inputs), "onoffs": ctx.onoffs, "lights": ctx.lights, "customs": ctx.customs, "switches": any(ep["switch"] for ep in eps), "ias": ctx.ias, "items": items, "cluster_max": ctx_cluster_max,
+        "bindings": bindings, "defaults": defaults, "inputs": ctx.inputs, "inputs_used": bool(ctx.inputs), "onoffs": ctx.onoffs, "lights": ctx.lights, "service": service, "customs": ctx.customs, "switches": any(ep["switch"] for ep in eps), "ias": ctx.ias, "items": items, "cluster_max": ctx_cluster_max,
         "attr_max": max(ZCL_ATTRIBUTE_NUM_MAX_DEFAULT, max_attrs), "overlay_tail": overlay_tail,
         "ports": chip.ports(ctx.pins_used),
     }

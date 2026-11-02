@@ -57,20 +57,50 @@ static void input_task(void *arg)
 	zbr_stay_awake(AFTER_EVENT_MS);
 }
 
+static void hold_task(void *arg)
+{
+	struct zbr_input *in = arg;
+
+	if (in->on_hold != NULL) {
+		in->on_hold();
+	}
+	zbr_stay_awake(AFTER_EVENT_MS);
+}
+
+static void input_held(struct k_work *work)
+{
+	struct zbr_input *in =
+		CONTAINER_OF(k_work_delayable_from_work(work), struct zbr_input, hold_work);
+
+	if (in->state > 0) {
+		(void)tl_zbTaskPost(hold_task, in);
+	}
+}
+
 static void input_debounced(struct k_work *work)
 {
 	struct zbr_input *in =
 		CONTAINER_OF(k_work_delayable_from_work(work), struct zbr_input, work);
 	int level = gpio_pin_get_dt(&in->spec);
+	bool first = in->state < 0;
 
 	if (level < 0 || level == in->state) {
 		return;
 	}
-	if (in->state < 0 && (in->initial == 2U || (in->initial == 1U && level == 0))) {
-		in->state = (int8_t)level;
+	in->state = (int8_t)level;
+
+	if (in->hold_ms != 0U) {
+		if (level > 0) {
+			/* stay up for the whole hold: a sleepy device must not sleep under the finger */
+			zbr_stay_awake((uint32_t)in->hold_ms + AFTER_EVENT_MS);
+			(void)k_work_reschedule(&in->hold_work, K_MSEC(in->hold_ms));
+		} else {
+			(void)k_work_cancel_delayable(&in->hold_work);
+		}
+	}
+	if (first && (in->initial == 2U || (in->initial == 1U && level == 0))) {
 		return;
 	}
-	in->state = (int8_t)level;
 	(void)tl_zbTaskPost(input_task, in);
 }
 
@@ -92,6 +122,7 @@ void zbr_input_init(struct zbr_input *in, size_t n)
 		}
 		in->state = -1;
 		k_work_init_delayable(&in->work, input_debounced);
+		k_work_init_delayable(&in->hold_work, input_held);
 		(void)gpio_pin_configure_dt(&in->spec, GPIO_INPUT);
 		gpio_init_callback(&in->gcb, input_isr, BIT(in->spec.pin));
 		(void)gpio_add_callback(in->spec.port, &in->gcb);

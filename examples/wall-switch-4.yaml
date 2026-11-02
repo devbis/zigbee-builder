@@ -1,0 +1,42 @@
+# A four-key wall switch (a sleepy end device): each key is an endpoint that sends Toggle to its binding.
+# The service action, the long press that joins and resets, is a choice of which keys do it:
+#   inputs: any        any key held for `hold`                 (this file)
+#   inputs: [k1, k4]   only these keys
+#   inputs: [rst]      only a recessed button, a fifth input that does nothing else (add it to components)
+zigbee:
+  name: wall-switch-4
+  manufacturer: DEVBIS
+  model: SWITCH-GEN-4
+  chip: tlsr8258
+  ota_image_type: 0x5B31
+
+pins:
+  p1: {pin: PA4, pull: up, inverted: true}
+  p2: {pin: PA5, pull: up, inverted: true}
+  p3: {pin: PA6, pull: up, inverted: true}
+  p4: {pin: PA7, pull: up, inverted: true}
+  led: {pin: PB4}
+
+status_led: led
+
+components:
+  - {id: k1, type: binary_input, pin: p1}
+  - {id: k2, type: binary_input, pin: p2}
+  - {id: k3, type: binary_input, pin: p3}
+  - {id: k4, type: binary_input, pin: p4}
+  - {id: bat, type: battery_adc}
+
+service:
+  hold: 5s              # held this long: in the network leave, erase and search; out of it, search
+  search_time: 60s      # the search window; then the device sleeps
+  inputs: any
+
+endpoints:
+  - id: 1
+    device: on_off_light_switch
+    clusters:
+      power_config: {source: bat}
+      on_off_switch: {source: k1, action: toggle}
+  - {id: 2, device: on_off_light_switch, clusters: {on_off_switch: {source: k2, action: toggle}}}
+  - {id: 3, device: on_off_light_switch, clusters: {on_off_switch: {source: k3, action: toggle}}}
+  - {id: 4, device: on_off_light_switch, clusters: {on_off_switch: {source: k4, action: toggle}}}

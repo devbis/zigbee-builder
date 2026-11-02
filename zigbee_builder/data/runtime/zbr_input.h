@@ -18,10 +18,14 @@ struct zbr_input {
 	/* the first read after init: 0 always reported, 1 only when active (a button held at a
 	 * wake by it), 2 never */
 	uint8_t initial;
+	/* held this long (0: not watched), on_hold runs once on the Zigbee thread */
+	uint16_t hold_ms;
+	void (*on_hold)(void);
 
 	/* private */
 	struct gpio_callback gcb;
 	struct k_work_delayable work;
+	struct k_work_delayable hold_work;
 	int8_t state;               /* -1 until the first read */
 };
 

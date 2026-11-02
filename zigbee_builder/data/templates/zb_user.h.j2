@@ -12,6 +12,8 @@
 
 /* Once at boot, after the endpoints are registered */
 void zb_user_init(void);
+/* The device left its network and the NV was erased: reset what you keep from the old one */
+void zb_user_network_left(void);
 /* Before every measurement tick's reports: update attributes here */
 void zb_user_measure(void);
 {% for c in customs %}

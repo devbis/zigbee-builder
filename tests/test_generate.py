@@ -396,3 +396,100 @@ def test_nrf52840_no_sleepy():
     d["zigbee"]["sleepy"] = True
     with pytest.raises(ConfigError, match="not supported on nrf52840"):
         resolve(Config.model_validate(d))
+
+
+def wall():
+    return yaml.safe_load((EX / "wall-switch-4.yaml").read_text())
+
+
+def holds(tmp_path, d):
+    """The inputs of the generated table that watch a long press."""
+    render(Config.model_validate(d), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    return [n for n in ("k1", "k2", "k3", "k4", "rst", "svc_button")
+            if f"DT_NODELABEL(in_{n})" in c and
+            ".on_hold = zbr_service_hold" in c.split(f"DT_NODELABEL(in_{n})")[1].split("},")[0]]
+
+
+def test_service_any_key(tmp_path):
+    assert holds(tmp_path, wall()) == ["k1", "k2", "k3", "k4"]
+
+
+def test_service_chosen_keys(tmp_path):
+    d = wall()
+    d["service"]["inputs"] = ["k1", "k4"]
+    assert holds(tmp_path, d) == ["k1", "k4"]
+
+
+def test_service_recessed_button(tmp_path):
+    d = wall()
+    d["pins"]["pr"] = {"pin": "PC0", "pull": "up", "inverted": True}
+    d["components"].append({"id": "rst", "type": "binary_input", "pin": "pr"})
+    d["service"]["inputs"] = ["rst"]
+    assert holds(tmp_path, d) == ["rst"]           # no endpoint uses it: it does nothing else
+
+
+def test_button_is_a_service_input(tmp_path):
+    cfg = load(str(EX / "plug-relay.yaml"))
+    render(cfg, tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    assert ".on_hold = zbr_service_hold" in c and ".hold_ms = 5000" in c
+    # one search window of 60 s, not open at boot
+    g = (tmp_path / "zb_gen.h").read_text()
+    assert "ZBR_SEARCH_MS 60000U" in g and "ZBR_SEARCH_ON_BOOT" not in g
+    # the button no longer is sw0: the board's own sw0 must not start a factory reset
+    assert "app_buttons_init" not in c and "sw0" not in (tmp_path / "tlsr8258_generic.overlay").read_text()
+
+
+def test_button_and_service_merge(tmp_path):
+    d = wall()
+    d["pins"]["pb"] = {"pin": "PC0", "pull": "up", "inverted": True}
+    d["button"] = "pb"
+    d["service"].update(inputs=["k2"], hold="3s", search_time="2min")
+    assert holds(tmp_path, d) == ["k2", "svc_button"]
+    g = (tmp_path / "zb_gen.h").read_text()
+    assert "ZBR_SEARCH_MS 120000U" in g
+    assert ".hold_ms = 3000" in (tmp_path / "zb_device.c").read_text()
+
+
+def test_no_service_input_searches_at_boot(tmp_path):
+    d = wall()
+    del d["service"]
+    render(Config.model_validate(d), tmp_path, EX)
+    g = (tmp_path / "zb_gen.h").read_text()
+    assert "ZBR_SEARCH_ON_BOOT 1" in g and "ZBR_SEARCH_MS 0U" in g
+    assert ".on_hold" not in (tmp_path / "zb_device.c").read_text()
+
+
+def test_service_errors():
+    d = wall()
+    d["service"]["inputs"] = ["nope"]
+    with pytest.raises(ConfigError, match="not a binary_input"):
+        resolve(Config.model_validate(d))
+    d = wall()
+    d["service"]["inputs"] = ["bat"]
+    with pytest.raises(ConfigError, match="not a binary_input"):
+        resolve(Config.model_validate(d))
+    for key, val in (("hold", "2s"), ("hold", "20s"), ("search_time", "5s"), ("search_time", "20min")):
+        d = wall()
+        d["service"][key] = val
+        with pytest.raises(Exception, match="seconds"):
+            Config.model_validate(d)
+    d = wall()
+    d["components"][0]["wake"] = False
+    with pytest.raises(ConfigError, match="wake"):
+        resolve(Config.model_validate(d))
+
+
+def test_toggle_on_button_needs_a_button():
+    d = yaml.safe_load((EX / "plug-relay.yaml").read_text())
+    del d["button"]
+    with pytest.raises(ConfigError, match="toggle_on_button needs button"):
+        resolve(Config.model_validate(d))
+
+
+def test_network_left_resets_the_ias_enrollment(tmp_path):
+    render(load(str(EX / "door-sensor.yaml")), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    assert "void zbr_network_left(void)" in c and "zbr_ias_reset(&ep1_ias)" in c
+    assert "void zb_user_network_left(void);" in (tmp_path / "zb_user.h").read_text()

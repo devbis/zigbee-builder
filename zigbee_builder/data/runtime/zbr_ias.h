@@ -31,6 +31,9 @@ void zbr_ias_set(struct zbr_ias *z, u16 mask, bool on);
 /* Cluster command callback: Zone Enroll Response */
 status_t zbr_ias_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload);
 
+/* The network was left and the NV erased: the enrollment is void, the zone is not enrolled any more */
+void zbr_ias_reset(struct zbr_ias *z);
+
 /* Call from the ZCL hook: a write of the CIE address starts the enrollment */
 void zbr_ias_hook(zclIncoming_t *in);
 

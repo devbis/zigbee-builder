@@ -49,6 +49,12 @@ void app_zcl_init(zcl_hookFn_t hook);
 void app_endpoint_add(uint8_t endpoint, af_simple_descriptor_t *desc,
 		      zcl_specClusterInfo_t *clusters, uint8_t num);
 
+/* The device left its network and the NV was erased (service button, or the coordinator's Leave) */
+void zbr_network_left(void);
+
+/* Blink the LED while the search window is open (zbr_search_start() calls this). */
+void app_led_search_start(void);
+
 /*
  * Drive led0 (a no-op on boards without one) while the device is on a network.
  * Blinking overrides it: Identify, and the search for a network.

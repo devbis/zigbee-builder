@@ -21,6 +21,7 @@
 #include "zbr_onoff.h"
 {% endif %}
 #include "zbr_store.h"
+#include "zbr_service.h"
 {% if lights %}
 #include "zbr_light.h"
 {% endif %}
@@ -207,6 +208,10 @@ __attribute__((weak)) void zb_user_init(void)
 }
 
 __attribute__((weak)) void zb_user_measure(void)
+{
+}
+
+__attribute__((weak)) void zb_user_network_left(void)
 {
 }
 
@@ -438,6 +443,10 @@ static struct zbr_input inputs[] = {
 		.wake = {{ 'true' if c.wake else 'false' }},
 		.cb = {{ c.id }}_changed,
 		.initial = {{ c.initial }},
+{% if c.service %}
+		.hold_ms = {{ service.hold_ms }},
+		.on_hold = zbr_service_hold,
+{% endif %}
 	},
 {% endfor %}
 };
@@ -534,16 +543,13 @@ static int measure_tick(void *arg)
 	return MEASURE_PERIOD_MS;
 }
 
-{% if onoffs | selectattr('relay.toggle') | list %}
-static void button_cb(uint8_t idx, bool pressed)
+void zbr_network_left(void)
 {
-	if (idx == 0U && pressed) {
-{% for o in onoffs if o.relay.toggle %}
-		zbr_onoff_set(&{{ o.var }}, !{{ o.var }}.state);
+{% for z in ias %}
+	zbr_ias_reset(&{{ z.var }});
 {% endfor %}
-	}
+	zb_user_network_left();
 }
-{% endif %}
 
 static void zcl_hook(zclIncoming_t *in)
 {
@@ -630,11 +636,6 @@ void app_device_register(void)
 	app_reporting_restore();
 	reporting_defaults();
 	zb_user_init();
-{% if onoffs | selectattr('relay.toggle') | list %}
-	app_buttons_init(button_cb);
-{% else %}
-	app_buttons_init(NULL);
-{% endif %}
 {% if inputs_used %}
 	zbr_input_init(inputs, ARRAY_SIZE(inputs));
 {% endif %}

@@ -21,8 +21,8 @@ set(ZB_SAMPLES_DIR ${ZEPHYR_BASE}/samples/zigbee)
 target_sources(app PRIVATE
   ${ZB_COMMON_DIR}/app_common.c
   ${ZB_COMMON_DIR}/app_reporting.c
-  # commissioning and rejoin policy of the Zephyr fork
-  ${ZB_SAMPLES_DIR}/zigbee_shell/src/app_bdb.c
+  # commissioning and rejoin policy: the fork's, with the search window (app_bdb.c here)
+  ${ZB_COMMON_DIR}/app_bdb.c
 )
 target_include_directories(app PRIVATE
   ${ZB_COMMON_DIR}

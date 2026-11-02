@@ -126,7 +126,8 @@ static int led_tick(void *arg)
 {
 	ARG_UNUSED(arg);
 
-	if (zb_isDeviceJoinedNwk()) {
+	/* blinks only while the search window is open: a closed window and a network both end it */
+	if (zb_isDeviceJoinedNwk() || !zbr_search_active()) {
 		search_blink_on = false;
 		led_timer = NULL;
 		led_apply();
@@ -138,7 +139,7 @@ static int led_tick(void *arg)
 	return APP_IDENTIFY_TICK_MS;
 }
 
-static void led_search_start(void)
+void app_led_search_start(void)
 {
 #ifdef APP_HAS_LED
 	if (led_timer == NULL && !zb_isDeviceJoinedNwk()) {
@@ -265,7 +266,7 @@ void app_zcl_init(zcl_hookFn_t hook)
 	if (gpio_is_ready_dt(&led)) {
 		(void)gpio_pin_configure_dt(&led, GPIO_OUTPUT_INACTIVE);
 	}
-	led_search_start();
+	app_led_search_start();
 	led_apply();
 #endif
 
@@ -385,7 +386,7 @@ static void button_isr(const struct device *port, struct gpio_callback *cb, uint
 
 #ifdef APP_BUTTON_WAKE
 /* Let the button end a deep sleep; the wake is a reset, init then sees the level. */
-static void button_wake_arm(const struct gpio_dt_spec *spec)
+static void __maybe_unused button_wake_arm(const struct gpio_dt_spec *spec)
 {
 	static const struct device *const ports[] = {
 		DEVICE_DT_GET(DT_NODELABEL(gpioa)), DEVICE_DT_GET(DT_NODELABEL(gpiob)),
@@ -478,7 +479,9 @@ void zb_platform_app_start_commissioning(void)
 
 void zb_platform_app_network_left(void)
 {
-	led_search_start();
+	/* the leave erased the NV: what the application keeps in RAM from the old network goes too */
+	zbr_network_left();
+	app_led_search_start();
 	app_bdb_network_left();
 }
 

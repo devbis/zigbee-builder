@@ -17,6 +17,27 @@ pins of that board (they replace the file's own `pins:` as a whole; `button` and
 
     zigbee-builder build examples/plug-relay.yaml --board examples/boards/esp32h2/plug-relay.yaml
 
+## Joining and resetting: the service buttons
+
+A device out of the network does not search for one by itself, and a device in a network never does. The search
+starts when a *service input* is held (3 to 10 s, default 5), and runs in a window (default 60 s); it ends when the
+device joins or the window closes, and a sleepy device then sleeps. Held in the network, a service input leaves it,
+erases the NV (the network, and with it everything the firmware kept: relay state, energy, IAS enrollment, custom
+attributes; `zb_user_network_left()` lets a plugin reset what it keeps in RAM) and opens the window.
+
+    button: pair                    # one service button: a pin of pins:
+
+    service:                        # or several, any of them
+      hold: 5s
+      search_time: 60s
+      inputs: any                   # any binary_input; or [k1, k4]; or [rst], a recessed button of its own
+
+`button:` and `service:` may be given together (the button is one more service input). A device with neither has
+no way to be paired by hand and searches from boot until it joins. A service input is an ordinary `binary_input`:
+its short press still does what its endpoint or relay says (the action is taken on the press, so a key that is held
+for a reset acts once at the start). See `examples/wall-switch-4.yaml`. Not done: the sleep of a device out of the
+network (the stack refuses it), which needs a change in the Zephyr fork.
+
 ## Chips
 | Chip | Toolchain | Status |
 |---|---|---|

@@ -76,6 +76,14 @@ void zbr_ias_init(struct zbr_ias *z)
 	}
 }
 
+void zbr_ias_reset(struct zbr_ias *z)
+{
+	z->zone_state = ZONE_STATE_NOT_ENROLLED;
+	z->zone_id = ZCL_ZONE_ID_INVALID;
+	memset(z->cie_addr, 0, sizeof(z->cie_addr));
+	z->notify_pending = false;
+}
+
 static bool cie_set(const struct zbr_ias *z)
 {
 	for (size_t i = 0; i < sizeof(z->cie_addr); i++) {

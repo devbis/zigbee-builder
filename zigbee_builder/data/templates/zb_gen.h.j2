@@ -5,6 +5,10 @@
 
 #define ZBR_MAX_ITEMS {{ items | length if items else 1 }}
 #define ZBR_MAX_GROUP {{ GROUP_MAX }}
+#define ZBR_SEARCH_MS {{ service.search_ms }}U
+{% if service.on_boot %}
+#define ZBR_SEARCH_ON_BOOT 1
+{% endif %}
 #define ZBR_WAKE_PERIOD_S {{ z.poll_interval }}
 
 {% if sleepy %}

@@ -1,0 +1,91 @@
+"""west build of the loader and the application, then signing and OTA packing."""
+from __future__ import annotations
+
+import json
+import os
+import re
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+from .chip import ConfigError
+
+
+def _env(env_file: Path | None) -> dict:
+    """ZEPHYR_BASE, LLVM_TOOLCHAIN_PATH, ZEPHYR_EXTRA_MODULES, WEST, PYTHON, MCUBOOT_DIR.
+    The environment wins over an env file ("export X=" or ': "${X:=...}"' lines of sh)."""
+    env = dict(os.environ)
+    if env_file and env_file.exists():
+        names = ("ZEPHYR_BASE", "LLVM_TOOLCHAIN_PATH", "ZEPHYR_EXTRA_MODULES", "WEST", "PYTHON", "MCUBOOT_DIR")
+        script = f'. "{env_file}"; ' + "; ".join(f'echo "{n}=${{{n}:-}}"' for n in names)
+        out = subprocess.run(["sh", "-c", script], capture_output=True, text=True, check=True)
+        for line in out.stdout.splitlines():
+            k, _, v = line.partition("=")
+            if v and k not in os.environ:
+                env[k] = v
+    for k in ("ZEPHYR_BASE", "LLVM_TOOLCHAIN_PATH", "ZEPHYR_EXTRA_MODULES"):
+        if not env.get(k):
+            raise ConfigError(f"{k} is not set: export it or pass --env-file (see docs/environment.md)")
+    return env
+
+
+def build(project: Path, out: Path, env_file: Path | None) -> list[Path]:
+    info = json.loads((project / "build_info.json").read_text())
+    env = _env(env_file)
+    west = env.get("WEST", "west")
+    zb = env["ZEPHYR_BASE"]
+    env["ZEPHYR_TOOLCHAIN_VARIANT"] = "host"
+    mcuboot = env.get("MCUBOOT_DIR") or subprocess.run(
+        [west, "topdir"], cwd=zb, env=env, capture_output=True, text=True, check=True
+    ).stdout.strip() + "/bootloader/mcuboot"
+    env["MCUBOOT_DIR"] = mcuboot
+    tc = ["-DTOOLCHAIN_VARIANT_COMPILER=llvm", f"-DLLVM_TOOLCHAIN_PATH={env['LLVM_TOOLCHAIN_PATH']}"]
+
+    loader = out / f"loader-{info['name']}"
+    app = out / info["name"]
+    run = lambda cmd: subprocess.run(cmd, cwd=zb, env=env, check=True)
+    run([west, "build", "-p", "auto", "-b", info["board"], "-d", str(loader),
+         f"{mcuboot}/boot/zephyr", "--", *tc,
+         f"-DEXTRA_CONF_FILE={project / 'loader.conf'}",
+         f"-DEXTRA_DTC_OVERLAY_FILE={project / 'loader.overlay'}"])
+    run([west, "build", "-p", "always", "-b", info["board"], "-d", str(app), str(project), "--",
+         f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
+         f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}",
+         *tc])
+    return package(project, app, loader / "zephyr/zephyr.bin", env)
+
+
+def _kconfig(text: str, name: str) -> int:
+    m = re.search(rf"^{name}=(0x[0-9A-Fa-f]+|\d+)$", text, re.M)
+    if not m:
+        raise ConfigError(f"{name} not found in the build's .config")
+    return int(m.group(1), 0)
+
+
+def package(project: Path, app: Path, loader_bin: Path, env: dict) -> list[Path]:
+    info = json.loads((project / "build_info.json").read_text())
+    fl = info["flash"]
+    python = env.get("PYTHON") or sys.executable
+    imgtool = Path(env["MCUBOOT_DIR"]) / "scripts/imgtool.py"
+    ota_pack = Path(env["ZEPHYR_BASE"]) / "scripts/zigbee_ota_pack.py"
+    version = info["version"]
+    oi = dict(l.split("=", 1) for l in (app / "ota_info.txt").read_text().split() if "=" in l)
+    manufacturer = _kconfig((app / "zephyr/.config").read_text(), "CONFIG_ZIGBEE_MANUFACTURER_CODE")
+
+    stem = app / f"{info['name']}-{version}"
+    signed, ota, full = Path(f"{stem}-signed.bin"), Path(f"{stem}.zigbee"), Path(f"{stem}-full.bin")
+    subprocess.run([python, str(imgtool), "sign", "--header-size", hex(fl["header_size"]), "--pad-header",
+                    "--align", "4", "--slot-size", hex(fl["slot_size"]), "--version", version,
+                    str(app / "zephyr/zephyr.bin"), str(signed)], check=True)
+    subprocess.run([python, str(ota_pack), str(signed), str(ota), "--manufacturer", hex(manufacturer),
+                    "--image-type", hex(int(oi["image_type"], 0)), "--file-version",
+                    hex(int(oi["file_version"], 0)), "--header-string", info["name"][:32]], check=True)
+    boot = loader_bin.read_bytes()
+    if len(boot) > fl["loader_end"]:
+        raise ConfigError(f"loader is {len(boot):#x} bytes, its partition ends at {fl['loader_end']:#x}")
+    image = signed.read_bytes()
+    full.write_bytes(boot.ljust(fl["loader_end"], b"\xff") + image)
+    print(f"{signed.name}: {len(image)} bytes (slot {fl['slot_size']:#x})")
+    print(f"{full.name}: loader {len(boot)} + image {len(image)} bytes")
+    return [signed, ota, full]

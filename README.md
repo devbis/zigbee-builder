@@ -11,9 +11,11 @@ the device code is generated from a cluster catalog plus a small C runtime.
         --env-file ../zigbee-devices-firmware/scripts/env.local   # ZEPHYR_BASE, LLVM_TOOLCHAIN_PATH, ...
 
 Changing a board = editing `pins:`; changing the chip = `zigbee.chip:` (plus pins in that chip's names).
-A pin may carry one name per chip, so one file builds for both: `relay: {tlsr8258: PD2, esp32h2: GPIO12}`,
-and `--chip esp32h2` picks the chip without editing the file (`examples/plug-relay.yaml`, `plug-bl0937.yaml`,
-`relay-3ch.yaml`, `custom-cluster.yaml` are written that way).
+A device file is for one board: the chip and the pins are in it, one name per pin.
+For tests and checks the same device file can be built on another board, `--board` giving the chip and the
+pins of that board (they replace the file's own `pins:` as a whole; `button` and `status_led` stay):
+
+    zigbee-builder build examples/plug-relay.yaml --board examples/boards/esp32h2/plug-relay.yaml
 
 ## Chips
 | Chip | Toolchain | Status |

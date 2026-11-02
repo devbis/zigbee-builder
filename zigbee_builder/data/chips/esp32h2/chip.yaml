@@ -20,6 +20,6 @@ wake: none
 # any pin pair is a hardware I2C
 i2c_hw: {any: {template: i2c_hw.dtsi.j2}}
 led0_node: false                   # the devkit has no gpio-leds node: the overlay makes one
-kconfig_all: [CONFIG_MAIN_STACK_SIZE=2048, CONFIG_PRINTK=n]
+kconfig_all: [CONFIG_MAIN_STACK_SIZE=2048]
 # the board's partitions: MCUboot at 0, slot 0 at 0x20000 (1792K)
 flash: {loader_end: 0x20000, slot_size: 0x1C0000}

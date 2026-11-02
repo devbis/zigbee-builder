@@ -46,7 +46,7 @@ class ZigbeeCfg(Strict):
 
 
 class PinCfg(Strict):
-    pin: str | dict[str, str]          # a name, or one per chip: {tlsr8258: PD2, esp32h2: GPIO12}
+    pin: str
     pull: Literal["up", "down", "none"] = "none"
     inverted: bool = False
 
@@ -109,21 +109,6 @@ class Config(Strict):
     button: str | None = None          # pin name from pins: -> sw0
     status_led: str | None = None      # pin name from pins: -> led0
 
-    @field_validator("pins", mode="before")
-    @classmethod
-    def _pins(cls, v):
-        # {tlsr8258: PD2, esp32h2: GPIO12} without a `pin:` key is the per-chip shorthand
-        out = {}
-        for k, p in (v or {}).items():
-            out[k] = {"pin": p} if isinstance(p, dict) and "pin" not in p else p
-        return out
-
     def pin_cfg(self, ref: str) -> PinCfg:
         p = self.pins.get(ref)
-        p = PinCfg(pin=ref) if p is None else (PinCfg(pin=p) if isinstance(p, str) else p)
-        if isinstance(p.pin, dict):
-            chip = self.zigbee.chip
-            if chip not in p.pin:
-                raise ValueError(f"pin '{ref}' has no entry for chip '{chip}' (has: {', '.join(p.pin)})")
-            p = p.model_copy(update={"pin": p.pin[chip]})
-        return p
+        return PinCfg(pin=ref) if p is None else (PinCfg(pin=p) if isinstance(p, str) else p)

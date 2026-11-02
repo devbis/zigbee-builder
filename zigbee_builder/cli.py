@@ -13,9 +13,27 @@ from .config import Config
 from .generator import render, resolve
 
 
-def load(path: str) -> Config:
+def load(path: str, board: str | None = None) -> Config:
+    """The device file, and optionally a board file that gives the chip and the pins instead of its own.
+    A board file replaces `pins:` as a whole: its pins are those of another PCB, they do not mix with
+    the device file's. `button` and `status_led` of the device file name logical pins and stay, unless
+    the board file sets them."""
     try:
-        return Config.model_validate(yaml.safe_load(Path(path).read_text()))
+        data = yaml.safe_load(Path(path).read_text())
+        if board:
+            b = yaml.safe_load(Path(board).read_text()) or {}
+            extra = set(b) - {"chip", "pins", "button", "status_led"}
+            if extra:
+                raise ConfigError(f"board file {board}: unknown keys {sorted(extra)} "
+                                  f"(a board has chip, pins, button, status_led)")
+            if "chip" not in b or "pins" not in b:
+                raise ConfigError(f"board file {board}: chip: and pins: are required")
+            data["zigbee"]["chip"] = b["chip"]
+            data["pins"] = b["pins"]
+            for k in ("button", "status_led"):
+                if k in b:
+                    data[k] = b[k]
+        return Config.model_validate(data)
     except ValidationError as e:
         lines = [f"{'.'.join(str(x) for x in err['loc'])}: {err['msg']}" for err in e.errors()]
         raise ConfigError("invalid configuration:\n  " + "\n  ".join(lines))
@@ -29,14 +47,12 @@ def main(argv=None):
         p = sub.add_parser(name, help=h)
         p.add_argument("config")
         p.add_argument("-o", "--out", default="build", help="output directory (default: build)")
-        p.add_argument("--chip", help="build for this chip instead of zigbee.chip (pins: per-chip entries)")
+        p.add_argument("--board", help="a board file (chip and pins) used instead of the device file's own")
         if name == "build":
             p.add_argument("--env-file", help="sh file setting ZEPHYR_BASE etc.")
     a = ap.parse_args(argv)
     try:
-        cfg = load(a.config)
-        if a.chip:
-            cfg.zigbee.chip = a.chip
+        cfg = load(a.config, a.board)
         if a.cmd == "validate":
             resolve(cfg)
             print("ok")

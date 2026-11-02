@@ -1,0 +1,6 @@
+# The pins of examples/custom-cluster.yaml on an ESP32-H2 devkit.
+chip: esp32h2
+pins:
+  contact: {pin: GPIO0, pull: up}
+  button: {pin: GPIO9, pull: up, inverted: true}
+  led: {pin: GPIO13, inverted: true}

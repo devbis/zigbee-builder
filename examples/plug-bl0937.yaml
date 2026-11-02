@@ -10,12 +10,12 @@ zigbee:
   ota_image_type: 0x5A10
 
 pins:
-  relay: {tlsr8258: PD2, esp32h2: GPIO12}
-  button: {pin: {tlsr8258: PA0, esp32h2: GPIO9}, pull: up, inverted: true}
-  led: {pin: {tlsr8258: PB1, esp32h2: GPIO13}, inverted: true}
-  cf: {tlsr8258: PB4, esp32h2: GPIO0}
-  cf1: {tlsr8258: PB5, esp32h2: GPIO1}
-  sel: {tlsr8258: PD3, esp32h2: GPIO10}
+  relay: PD2
+  button: {pin: PA0, pull: up, inverted: true}
+  led: {pin: PB1, inverted: true}
+  cf: PB4
+  cf1: PB5
+  sel: PD3
 
 button: button
 status_led: led

@@ -259,10 +259,7 @@ def resolve(cfg: Config):
     # --- pins
     named = {}
     for ref, v in cfg.pins.items():
-        try:
-            pc = cfg.pin_cfg(ref)
-        except ValueError as e:
-            raise ConfigError(str(e))
+        pc = cfg.pin_cfg(ref)
         named[ref] = (chip.pin(pc.pin), pc)
     seen = {}
     for ref, (p, _) in named.items():

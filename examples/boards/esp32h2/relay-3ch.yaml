@@ -1,0 +1,12 @@
+# The pins of examples/relay-3ch.yaml on an ESP32-H2 devkit.
+chip: esp32h2
+pins:
+  r1: GPIO10
+  r2: GPIO11
+  r3: GPIO12
+  b1: {pin: GPIO0, pull: up, inverted: true}
+  b2: {pin: GPIO1, pull: up, inverted: true}
+  b3: {pin: GPIO2, pull: up, inverted: true}
+  wall: {pin: GPIO3, pull: up, inverted: true}
+  pair: {pin: GPIO9, pull: up, inverted: true}
+  led: {pin: GPIO13, inverted: true}

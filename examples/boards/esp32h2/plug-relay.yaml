@@ -1,0 +1,6 @@
+# The pins of examples/plug-relay.yaml on an ESP32-H2 devkit (for tests and checks).
+chip: esp32h2
+pins:
+  relay: GPIO12
+  button: {pin: GPIO9, pull: up, inverted: true}     # the devkit's BOOT button
+  led: {pin: GPIO13, inverted: true}

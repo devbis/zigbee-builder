@@ -1,0 +1,9 @@
+# The pins of examples/plug-bl0937.yaml on an ESP32-H2 devkit.
+chip: esp32h2
+pins:
+  relay: GPIO12
+  button: {pin: GPIO9, pull: up, inverted: true}
+  led: {pin: GPIO13, inverted: true}
+  cf: GPIO0
+  cf1: GPIO1
+  sel: GPIO10

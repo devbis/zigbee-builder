@@ -493,3 +493,13 @@ def test_network_left_resets_the_ias_enrollment(tmp_path):
     c = (tmp_path / "zb_device.c").read_text()
     assert "void zbr_network_left(void)" in c and "zbr_ias_reset(&ep1_ias)" in c
     assert "void zb_user_network_left(void);" in (tmp_path / "zb_user.h").read_text()
+
+
+def test_relative_output_directory_is_made_absolute(tmp_path, monkeypatch):
+    """west runs in the Zephyr tree, so a relative -o would point into it."""
+    from zigbee_builder import cli
+    seen = {}
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr("zigbee_builder.build.build", lambda project, out, env: seen.update(project=project, out=out))
+    cli.main(["build", str(EX / "plug-relay.yaml"), "-o", "rel/out"])
+    assert seen["project"].is_absolute() and seen["out"].is_absolute()

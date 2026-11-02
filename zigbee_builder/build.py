@@ -30,11 +30,16 @@ def _env(env_file: Path | None, toolchain: str = "tc32_llvm") -> dict:
     if toolchain == "tc32_llvm":
         need.append("LLVM_TOOLCHAIN_PATH")
     elif toolchain == "gnuarmemb":
-        if not env.get("GNUARMEMB_TOOLCHAIN_PATH"):   # where arm-none-eabi-gcc is: <path>/bin/arm-none-eabi-gcc
+        sdk = env.get("ZEPHYR_SDK_INSTALL_DIR")
+        if sdk and (Path(sdk) / "gnu/arm-zephyr-eabi").is_dir():    # the SDK has the ARM toolchain: use it
+            env["ZBR_USE_SDK_ARM"] = "1"
+            need.append("ZEPHYR_SDK_INSTALL_DIR")
+        elif not env.get("GNUARMEMB_TOOLCHAIN_PATH"):   # where arm-none-eabi-gcc is: <path>/bin/arm-none-eabi-gcc
             gcc = shutil.which("arm-none-eabi-gcc", path=env.get("PATH"))
             if gcc:
                 env["GNUARMEMB_TOOLCHAIN_PATH"] = str(Path(gcc).parent.parent)   # not resolved: Homebrew links the tools from several formulas
-        need.append("GNUARMEMB_TOOLCHAIN_PATH")
+        if not env.get("ZBR_USE_SDK_ARM"):
+            need.append("GNUARMEMB_TOOLCHAIN_PATH")
     else:
         if not env.get("ZEPHYR_SDK_INSTALL_DIR"):     # the newest SDK in the home directory
             sdks = sorted(Path.home().glob("zephyr-sdk-*"))
@@ -99,7 +104,8 @@ def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> 
 def _build_sysbuild(project: Path, out: Path, info: dict, env: dict, west: str) -> list[Path]:
     """One west build --sysbuild with the Zephyr SDK: MCUboot and the signed application image.
     The full image is the loader, padded to the slot, and the signed image."""
-    env["ZEPHYR_TOOLCHAIN_VARIANT"] = "gnuarmemb" if info["toolchain"] == "gnuarmemb" else "zephyr"
+    env["ZEPHYR_TOOLCHAIN_VARIANT"] = ("gnuarmemb" if info["toolchain"] == "gnuarmemb" and not env.get("ZBR_USE_SDK_ARM")
+                                        else "zephyr")
     build = out / info["name"]
     subprocess.run(
         [west, "build", "--sysbuild", "-p", "always", "-b", info["board"], "-d", str(build), str(project), "--",

@@ -1,0 +1,10 @@
+.git
+.venv
+build
+__pycache__
+*.egg-info
+.pytest_cache
+.claude
+tests
+examples
+README.md

@@ -38,6 +38,21 @@ its short press still does what its endpoint or relay says (the action is taken 
 for a reset acts once at the start). See `examples/wall-switch-4.yaml`. Not done: the sleep of a device out of the
 network (the stack refuses it), which needs a change in the Zephyr fork.
 
+## Docker
+
+The image has everything the builds need (the Zephyr fork and its modules, MCUboot, the TC32 LLVM from the fork's
+binary release, the Zephyr SDK toolchains for ARM and RISC-V, the drivers, this builder); nothing is compiled while it
+is built. The revisions are in `docker/pins.env`.
+
+    docker/build.sh                 # builds zigbee-builder (about 20 minutes, 5 GB; the first time)
+    docker run --rm -v "$PWD":/work zigbee-builder build examples/plug-relay.yaml -o build
+    docker run --rm -v "$PWD":/work zigbee-builder build examples/plug-relay.yaml \
+        --board examples/boards/nrf52840/plug-relay.yaml -o build
+
+The same image builds for the three chips (a build takes about a minute in it). It is built for the machine's
+architecture (arm64 or amd64; the TC32 LLVM release has both, checked with its SHA-256). Checked: one build per
+chip on arm64.
+
 ## Chips
 | Chip | Toolchain | Status |
 |---|---|---|
@@ -89,4 +104,4 @@ PWM channels are assigned from the chip's pin table and conflicts are reported. 
 only and checked on the host against known colours; Level Move runs to its end and Stop is ignored, hue/colour
 Move and colour loop are unsupported. This is the first use of Color Control in the stack: builds, not flashed.
 Second chip: the ESP32-H2 images (about 270 KB of flash) build, are signed and packed as OTA files; not flashed. Not done: calibration settings in NV,
-ESP32-H2 sleep/OTA/ADC/PWM, other chips, Docker image, HA add-on. `app_common.c` still has TLSR-specific wake code (guarded by Kconfig).
+ESP32-H2 sleep/ADC/PWM, other chips, HA add-on. `app_common.c` still has TLSR-specific wake code (guarded by Kconfig).

@@ -57,13 +57,13 @@ def main(argv=None):
             resolve(cfg)
             print("ok")
             return 0
-        out = Path(a.out)
+        out = Path(a.out).resolve()      # west runs in the Zephyr tree: paths must not be relative
         project = out / f"{cfg.zigbee.name}-{cfg.zigbee.chip}" / "gen"
         render(cfg, project, Path(a.config).resolve().parent)
         print(f"project: {project}")
         if a.cmd == "build":
             from .build import build
-            build(project, out / f"{cfg.zigbee.name}-{cfg.zigbee.chip}", Path(a.env_file) if a.env_file else None)
+            build(project, out / f"{cfg.zigbee.name}-{cfg.zigbee.chip}", Path(a.env_file).resolve() if a.env_file else None)
     except ConfigError as e:
         print(f"error: {e}", file=sys.stderr)
         return 1

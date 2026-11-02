@@ -287,8 +287,10 @@ def test_esp32h2_differences(tmp_path):
     cfg.zigbee.chip = "esp32h2"
     render(cfg, tmp_path, EX)
     conf = (tmp_path / "prj.conf").read_text()
-    assert "CONFIG_ZIGBEE_OTA=n" in conf and "TLSR" not in conf and "MINIMAL_LIBC" not in conf
-    assert not (tmp_path / "loader.conf").exists()
+    assert "CONFIG_ZIGBEE_OTA=y" in conf and "TLSR" not in conf and "MINIMAL_LIBC" not in conf
+    # the image is signed by sysbuild: its version comes from the YAML
+    assert 'CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION="0.1.0"' in conf
+    assert not (tmp_path / "loader.conf").exists()          # MCUboot is built by sysbuild, not by us
     assert "SNIPPET" not in (tmp_path / "CMakeLists.txt").read_text()
     # no led0 on the devkit: the overlay makes one
     assert "aliases { led0 = &status_led; }" in (tmp_path / "esp32h2_devkitm_esp32h2.overlay").read_text()

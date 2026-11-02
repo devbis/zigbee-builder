@@ -639,6 +639,8 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     if manufacturer_code is not None:       # else the SoC's default of the stack
         kconfig += [f"CONFIG_ZIGBEE_MANUFACTURER_CODE=0x{manufacturer_code:X}"]
     kconfig += ["CONFIG_ZIGBEE_OTA=y" if chip.d.get("ota", True) else "CONFIG_ZIGBEE_OTA=n"]
+    if chip.d.get("build", {}).get("driver") == "sysbuild":
+        kconfig += [f'CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION="{z.version}"']
     kconfig += chip.d.get("kconfig_all", [])
     if z.role == "end_device":
         kconfig += [f"CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS={z.poll_interval * 1000}"]

@@ -48,6 +48,8 @@ def build(project: Path, out: Path, env_file: Path | None) -> list[Path]:
     west = env.get("WEST", "west")
     if info["build"]["driver"] == "plain":
         return _build_plain(project, out, info, env, west)
+    if info["build"]["driver"] == "sysbuild":
+        return _build_sysbuild(project, out, info, env, west)
     zb = env["ZEPHYR_BASE"]
     env["ZEPHYR_TOOLCHAIN_VARIANT"] = "host"
     mcuboot = env.get("MCUBOOT_DIR") or subprocess.run(
@@ -85,6 +87,45 @@ def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> 
     print(f"{full.name}: {full.stat().st_size} bytes, flash at {info['flash']['full_image_offset']:#x}"
           f"{'' if info['ota'] else ' (no OTA on this chip yet)'}")
     return [full]
+
+
+def _build_sysbuild(project: Path, out: Path, info: dict, env: dict, west: str) -> list[Path]:
+    """One west build --sysbuild with the Zephyr SDK: MCUboot and the signed application image.
+    The full image is the loader, padded to the slot, and the signed image."""
+    env["ZEPHYR_TOOLCHAIN_VARIANT"] = "zephyr"
+    build = out / info["name"]
+    subprocess.run(
+        [west, "build", "--sysbuild", "-p", "always", "-b", info["board"], "-d", str(build), str(project), "--",
+         f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
+         f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
+        cwd=env["ZEPHYR_BASE"], env=env, check=True)
+    app = build / project.name                       # sysbuild names the application by its directory
+    return _package(info, app, build / "mcuboot/zephyr/zephyr.bin", app / "zephyr/zephyr.signed.bin", env)
+
+
+def _package(info: dict, app: Path, loader_bin: Path, signed: Path, env: dict) -> list[Path]:
+    """OTA file and full image from an image that is already signed."""
+    fl = info["flash"]
+    python = env.get("PYTHON") or sys.executable
+    ota_pack = Path(env["ZEPHYR_BASE"]) / "scripts/zigbee_ota_pack.py"
+    oi = dict(l.split("=", 1) for l in (app / "ota_info.txt").read_text().split() if "=" in l)
+    manufacturer = _kconfig((app / "zephyr/.config").read_text(), "CONFIG_ZIGBEE_MANUFACTURER_CODE")
+    stem = app.parent / f"{info['name']}-{info['version']}"
+    ota, full, sig = Path(f"{stem}.zigbee"), Path(f"{stem}-full.bin"), Path(f"{stem}-signed.bin")
+    sig.write_bytes(signed.read_bytes())
+    subprocess.run([python, str(ota_pack), str(sig), str(ota), "--manufacturer", hex(manufacturer),
+                    "--image-type", hex(int(oi["image_type"], 0)), "--file-version",
+                    hex(int(oi["file_version"], 0)), "--header-string", info["name"][:32]], check=True)
+    boot = loader_bin.read_bytes()
+    if len(boot) > fl["loader_end"]:
+        raise ConfigError(f"loader is {len(boot):#x} bytes, its partition ends at {fl['loader_end']:#x}")
+    image = sig.read_bytes()
+    if len(image) > fl["slot_size"]:
+        raise ConfigError(f"image is {len(image):#x} bytes, slot 0 holds {fl['slot_size']:#x}")
+    full.write_bytes(boot.ljust(fl["loader_end"], b"\xff") + image)
+    print(f"{sig.name}: {len(image)} bytes (slot {fl['slot_size']:#x})")
+    print(f"{full.name}: loader {len(boot)} + image {len(image)} bytes, flash at 0x0")
+    return [sig, ota, full]
 
 
 def _kconfig(text: str, name: str) -> int:

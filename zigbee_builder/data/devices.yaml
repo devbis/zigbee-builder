@@ -1,0 +1,14 @@
+# Home Automation device ids for the simple descriptor
+temperature_sensor: 0x0302
+humidity_sensor: 0x0302     # HA has no separate one; sensors report as temperature sensor
+smart_plug: 0x0051
+on_off_output: 0x0002
+on_off_light: 0x0100
+dimmable_light: 0x0101
+color_dimmable_light: 0x0102
+extended_color_light: 0x010D
+color_temperature_light: 0x010C
+on_off_light_switch: 0x0103
+on_off_switch: 0x0000
+ias_zone: 0x0402
+custom: 0xFFF0

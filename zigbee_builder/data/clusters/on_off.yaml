@@ -1,0 +1,8 @@
+# On/Off (0x0006) server. Special: runtime/zbr_onoff.c drives the output and keeps the state.
+name: on_off
+special: on_off
+id: ZCL_CLUSTER_GEN_ON_OFF
+header: zcl/general/zcl_onoff.h
+register: zcl_onOff_register
+kconfig: [CONFIG_ZIGBEE_ZCL_ON_OFF=y]
+report: {min: 0s, max: 5min}

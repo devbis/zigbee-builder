@@ -1,0 +1,29 @@
+# Power Configuration (0x0001): battery voltage and remaining percentage
+name: power_config
+id: ZCL_CLUSTER_GEN_POWER_CFG
+header: zcl/general/zcl_powerCfg.h
+register: zcl_powerCfg_register
+kconfig: [CONFIG_ZIGBEE_ZCL_POWER_CFG=y]
+attributes:
+  battery_voltage:
+    id: ZCL_ATTRID_BATTERY_VOLTAGE
+    type: UINT8
+    c_type: u8
+    access: RR
+    channel: voltage      # source "bat" means bat.voltage
+    scale: 0.1            # ZCL unit = 0.1 V (channel is in mV)
+    invalid: 0xFF
+    min: 0
+    max: 0xFE
+    report: {min: 1h, max: 6h, change: 0.1}
+  battery_percentage:
+    id: ZCL_ATTRID_BATTERY_PERCENTAGE_REMAINING
+    type: UINT8
+    c_type: u8
+    access: RR
+    channel: percent
+    scale: 0.5            # ZCL unit = 0.5 %
+    invalid: 0xFF
+    min: 0
+    max: 200
+    report: {min: 1h, max: 6h, change: 1}

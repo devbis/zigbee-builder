@@ -1,0 +1,12 @@
+# Energy meters on the iot_drivers energy meter API (voltage, current, power, energy).
+# Defaults are the TS011F reference board's; calibrate against a known load.
+bl0937:
+  kind: energy_meter
+  compatible: "belling,bl0937"
+  pins: [cf, cf1, sel]
+  props:
+    shunt_micro_ohms: {dt: shunt-micro-ohms, default: 1000}
+    voltage_divider_milli: {dt: voltage-divider-milli, default: 2351000}
+    cf_pulses_per_kwh: {dt: cf-pulses-per-kwh, default: 3200}
+    current_noise_floor_ma: {dt: current-noise-floor-milliamps, default: 14}
+  flags: {sel_high_is_voltage: {dt: sel-high-is-voltage, default: true}}

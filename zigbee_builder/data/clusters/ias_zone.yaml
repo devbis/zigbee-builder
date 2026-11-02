@@ -1,0 +1,22 @@
+# IAS Zone (0x0500) server. Special: the protocol is in runtime/zbr_ias.c, not in a table.
+name: ias_zone
+special: ias_zone
+id: ZCL_CLUSTER_SS_IAS_ZONE
+header: zcl/security_safety/zcl_ias_zone.h
+register: zcl_iasZone_register
+kconfig: [CONFIG_ZIGBEE_ZCL_IAS_ZONE=y]
+zone_types:
+  standard_cie: 0x0000
+  motion: 0x000D
+  contact_switch: 0x0015
+  door_window_handle: 0x0016
+  fire: 0x0028
+  water_sensor: 0x002A
+  carbon_monoxide: 0x002B
+  personal_emergency: 0x002C
+  vibration: 0x002D
+  remote_control: 0x010F
+  key_fob: 0x0115
+  glass_break: 0x0226
+# status bit -> the config key that feeds it
+bits: {alarm1: 0x0001, alarm2: 0x0002, tamper: 0x0004}

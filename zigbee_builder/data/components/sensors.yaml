@@ -1,0 +1,5 @@
+# Zephyr-sensor-API chips on I2C. Channels are read in milli-units.
+sht3x:   {kind: sensor_i2c, compatible: "sensirion,sht3xd", address: 0x44}
+sht4x:   {kind: sensor_i2c, compatible: "sensirion,sht4x",  address: 0x44}
+aht20:   {kind: sensor_i2c, compatible: "aosong,aht20",     address: 0x38}
+cht8305: {kind: sensor_i2c, compatible: "sensylink,cht8305", address: 0x40}

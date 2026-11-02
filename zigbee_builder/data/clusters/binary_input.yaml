@@ -1,0 +1,12 @@
+# Binary Input (0x000F): the state of an input as a boolean. Abstract "something is on/off".
+name: binary_input
+id: ZCL_CLUSTER_GEN_BINARY_INPUT_BASIC
+header: zcl/general/zcl_binary_input.h
+register: zcl_binary_input_register
+kconfig: [CONFIG_ZIGBEE_ZCL_BINARY_INPUT=y]
+attributes:
+  present_value:
+    {id: ZCL_BINARY_INPUT_ATTRID_PRESENT_VALUE, type: BOOLEAN, c_type: u8, access: RR, channel: active,
+     event: true, invalid: 0xFF, scale: 1, report: {min: 0s, max: 5min, change: 0}}
+  out_of_service: {id: 0x0051, type: BOOLEAN, c_type: u8, access: R, const: 0}
+  status_flags:   {id: 0x006F, type: BITMAP8, c_type: u8, access: R, const: 0}

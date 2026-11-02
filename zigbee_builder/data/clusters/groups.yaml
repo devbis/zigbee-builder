@@ -1,0 +1,12 @@
+name: groups
+id: ZCL_CLUSTER_GEN_GROUPS
+header: zcl/general/zcl_group.h
+register: zcl_group_register
+kconfig: [CONFIG_ZIGBEE_ZCL_GROUP=y]
+attributes:
+  name_support:
+    id: ZCL_ATTRID_GROUP_NAME_SUPPORT
+    type: BITMAP8
+    c_type: u8
+    access: R
+    const: 0

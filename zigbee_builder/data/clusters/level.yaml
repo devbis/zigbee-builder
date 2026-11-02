@@ -1,0 +1,7 @@
+# level: special, runtime/zbr_light.c holds the state, the maths and the transitions.
+name: level
+special: light_level
+id: ZCL_CLUSTER_GEN_LEVEL_CONTROL
+header: zcl/general/zcl_level.h
+register: zcl_level_register
+kconfig: [CONFIG_ZIGBEE_ZCL_LEVEL_CTRL=y, CONFIG_PWM=y]

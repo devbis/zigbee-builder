@@ -1,0 +1,16 @@
+# Simple Metering (0x0702): summation delivered in Wh (kWh with divisor 1000).
+# The stack's change check has no 48-bit case: the energy goes out at the maximum interval only.
+name: metering
+id: ZCL_CLUSTER_SE_METERING
+header: zcl/smart_energy/zcl_metering.h
+register: zcl_metering_register
+kconfig: [CONFIG_ZIGBEE_ZCL_METERING=y]
+attributes:
+  summation:
+    {id: ZCL_ATTRID_CURRENT_SUMMATION_DELIVERD, type: UINT48, c_type: u64, access: RR, channel: energy,
+     scale: 0.001, min: 0, max: 0x7FFFFFFF, report: {min: 60s, max: 10min, change: 0}}
+  unit:        {id: ZCL_ATTRID_UNIT_OF_MEASURE, type: ENUM8, c_type: u8, access: R, const: 0}
+  multiplier:  {id: ZCL_ATTRID_MULTIPLIER, type: UINT24, c_type: u32, access: R, const: 1}
+  divisor:     {id: ZCL_ATTRID_DIVISOR, type: UINT24, c_type: u32, access: R, const: 1000}
+  formatting:  {id: ZCL_ATTRID_SUMMATION_FORMATTING, type: BITMAP8, c_type: u8, access: R, const: 0x33}
+  device_type: {id: ZCL_ATTRID_METERING_DEVICE_TYPE, type: BITMAP8, c_type: u8, access: R, const: 0}

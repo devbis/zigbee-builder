@@ -1,0 +1,30 @@
+# Relative Humidity Measurement (0x0405): ZCL unit 0.01 %
+name: humidity
+id: ZCL_CLUSTER_MS_RELATIVE_HUMIDITY
+header: zcl/measument_sensing/zcl_relative_humidity.h
+register: zcl_relative_humidity_register
+kconfig: [CONFIG_ZIGBEE_ZCL_RELATIVE_HUMIDITY=y]
+attributes:
+  measured_value:
+    id: ZCL_RELATIVE_HUMIDITY_ATTRID_MEASUREDVALUE
+    type: UINT16
+    c_type: u16
+    access: RR
+    channel: humidity
+    scale: 0.01
+    invalid: 0xFFFF
+    min: 0
+    max: 10000
+    report: {min: 10s, max: 1h, change: 2}
+  min_measured_value:
+    id: ZCL_RELATIVE_HUMIDITY_ATTRID_MINMEASUREDVALUE
+    type: UINT16
+    c_type: u16
+    access: R
+    const: 0
+  max_measured_value:
+    id: ZCL_RELATIVE_HUMIDITY_ATTRID_MAXMEASUREDVALUE
+    type: UINT16
+    c_type: u16
+    access: R
+    const: 10000

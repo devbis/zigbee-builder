@@ -1,0 +1,30 @@
+# Temperature Measurement (0x0402): ZCL unit 0.01 degC
+name: temperature
+id: ZCL_CLUSTER_MS_TEMPERATURE_MEASUREMENT
+header: zcl/measument_sensing/zcl_temperature_measurement.h
+register: zcl_temperature_measurement_register
+kconfig: [CONFIG_ZIGBEE_ZCL_TEMPERATURE_MEASUREMENT=y]
+attributes:
+  measured_value:
+    id: ZCL_TEMPERATURE_MEASUREMENT_ATTRID_MEASUREDVALUE
+    type: INT16
+    c_type: s16
+    access: RR
+    channel: temperature
+    scale: 0.01
+    invalid: 0x8000
+    min: -4000
+    max: 12500
+    report: {min: 10s, max: 1h, change: 0.5}
+  min_measured_value:
+    id: ZCL_TEMPERATURE_MEASUREMENT_ATTRID_MINMEASUREDVALUE
+    type: INT16
+    c_type: s16
+    access: R
+    const: -4000
+  max_measured_value:
+    id: ZCL_TEMPERATURE_MEASUREMENT_ATTRID_MAXMEASUREDVALUE
+    type: INT16
+    c_type: s16
+    access: R
+    const: 12500

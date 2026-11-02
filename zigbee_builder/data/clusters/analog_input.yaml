@@ -1,0 +1,14 @@
+# Analog Input (0x000C): a number in engineering units (V, %, degC ...) as a float. The stack has no
+# code for it; runtime/zbr.c registers the table. scale: the unit of the source's base unit (1 = V for a
+# voltage channel); override it with `scale:` in the cluster's config.
+name: analog_input
+id: ZCL_CLUSTER_GEN_ANALOG_INPUT_BASIC
+header: zbr.h
+register: zbr_register_analog_input
+kconfig: []
+attributes:
+  present_value:
+    {id: 0x0055, type: SINGLE_PREC, c_type: float, access: RR, channel: voltage, scale: 1, min: 0, max: 0, invalid: 0x7FC00000,
+     report: {min: 10s, max: 5min, change: 0}}
+  out_of_service: {id: 0x0051, type: BOOLEAN, c_type: u8, access: R, const: 0}
+  status_flags:   {id: 0x006F, type: BITMAP8, c_type: u8, access: R, const: 0}

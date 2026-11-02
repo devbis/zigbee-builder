@@ -1,0 +1,7 @@
+# color_control: special, runtime/zbr_light.c holds the state, the maths and the transitions.
+name: color_control
+special: light_color
+id: ZCL_CLUSTER_LIGHTING_COLOR_CONTROL
+header: zcl/light_color_control/zcl_light_colorCtrl.h
+register: zcl_lightColorCtrl_register
+kconfig: [CONFIG_ZIGBEE_ZCL_LIGHT_COLOR_CONTROL=y, CONFIG_PWM=y]

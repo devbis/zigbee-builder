@@ -1,0 +1,9 @@
+# On/Off client (output cluster 0x0006) of a switch: sends On/Off/Toggle to the binding.
+# Special: runtime/zbr_switch.c. The cluster is only in the endpoint's output list.
+name: on_off_switch
+special: on_off_switch
+out_cluster: ZCL_CLUSTER_GEN_ON_OFF
+id: ZCL_CLUSTER_GEN_ON_OFF
+header: zcl/general/zcl_onoff.h
+kconfig: [CONFIG_ZIGBEE_ZCL_ON_OFF=y]
+actions: {"off": ZBR_SWITCH_OFF, "on": ZBR_SWITCH_ON, "toggle": ZBR_SWITCH_TOGGLE}

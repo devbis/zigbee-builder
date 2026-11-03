@@ -340,7 +340,8 @@ def resolve(cfg: Config):
             raise ConfigError(f"service input '{i}': a sleepy device needs wake: true on it")
         comp["service"] = True
     service = {"hold_ms": (svc.hold if svc else 5) * 1000, "search_ms": (svc.search_time if svc else 60) * 1000,
-               "inputs": service_ids, "on_boot": not service_ids}
+               "inputs": service_ids, "on_boot": not service_ids,
+               "on_power_on": bool(service_ids) and (svc.search_on_power_on if svc else True)}
     if not service_ids:
         service["search_ms"] = 0              # no button: the search stays open until the device joins
 
@@ -707,7 +708,7 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     # loader (MCUboot) config of the chip
     wh = chip.d.get("wake_header")
     (out / "chip_wake.h").write_text((chip.dir / wh).read_text() if wh else
-        "#pragma once\n#include <zephyr/drivers/gpio.h>\nstatic inline void zbr_chip_wake_arm(const struct gpio_dt_spec *s) { (void)s; }\n")
+        "#pragma once\n#include <stdbool.h>\n#include <zephyr/drivers/gpio.h>\nstatic inline bool zbr_chip_cold_boot(void) { return true; }\nstatic inline void zbr_chip_wake_arm(const struct gpio_dt_spec *s) { (void)s; }\n")
     if chip.d.get("loader"):
         (out / "loader.conf").write_text("\n".join(chip.d["loader"]["conf"]) + "\n")
         shutil.copy(chip.dir / chip.d["loader"]["overlay"], out / "loader.overlay")

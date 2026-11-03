@@ -32,6 +32,8 @@ attributes; `zb_user_network_left()` lets a plugin reset what it keeps in RAM) a
       search_time: 60s
       inputs: any                   # any binary_input; or [k1, k4]; or [rst], a recessed button of its own
 
+When the power is applied (plugged in, a battery inserted) and the device has no network, it searches for one in
+the same window, with no button; a wake from sleep does not (`service: {search_on_power_on: false}` turns this off).
 `button:` and `service:` may be given together (the button is one more service input). A device with neither has
 no way to be paired by hand and searches from boot until it joins. A service input is an ordinary `binary_input`:
 its short press still does what its endpoint or relay says (the action is taken on the press, so a key that is held

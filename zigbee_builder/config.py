@@ -94,6 +94,7 @@ class ServiceCfg(Strict):
     """The buttons that join and reset the device when held: see zbr_service.c."""
     hold: int = 5                      # seconds
     search_time: int = 60              # seconds the search window stays open
+    search_on_power_on: bool = True    # search for a network when the power is applied and there is none
     inputs: Literal["any"] | list[str] = []
 
     @field_validator("hold", "search_time", mode="before")

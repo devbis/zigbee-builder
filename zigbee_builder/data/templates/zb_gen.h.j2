@@ -9,6 +9,9 @@
 {% if service.on_boot %}
 #define ZBR_SEARCH_ON_BOOT 1
 {% endif %}
+{% if service.on_power_on %}
+#define ZBR_SEARCH_ON_POWER_ON 1
+{% endif %}
 #define ZBR_WAKE_PERIOD_S {{ z.poll_interval }}
 
 {% if sleepy %}

@@ -8,6 +8,12 @@
 #if defined(CONFIG_ZIGBEE_SLEEPY_DEEP)
 #include "power.h"
 
+/* True when the power was applied; false when a deep sleep ended (a timer, a pin, ...) */
+static inline bool zbr_chip_cold_boot(void)
+{
+	return tlsr8258_pm_get_wakeup_reason() == TLSR8258_PM_WAKEUP_NONE;
+}
+
 static inline void zbr_chip_wake_arm(const struct gpio_dt_spec *spec)
 {
 	static const struct device *const ports[] = {
@@ -24,6 +30,12 @@ static inline void zbr_chip_wake_arm(const struct gpio_dt_spec *spec)
 	}
 }
 #else
+/* No deep sleep here: every start is a power-on (or a reset) */
+static inline bool zbr_chip_cold_boot(void)
+{
+	return true;
+}
+
 static inline void zbr_chip_wake_arm(const struct gpio_dt_spec *spec)
 {
 	ARG_UNUSED(spec);

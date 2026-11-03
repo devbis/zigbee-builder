@@ -437,6 +437,8 @@ def test_button_is_a_service_input(tmp_path):
     # one search window of 60 s, not open at boot
     g = (tmp_path / "zb_gen.h").read_text()
     assert "ZBR_SEARCH_MS 60000U" in g and "ZBR_SEARCH_ON_BOOT" not in g
+    # ... but when the power is applied to a device with no network
+    assert "ZBR_SEARCH_ON_POWER_ON 1" in g
     # the button no longer is sw0: the board's own sw0 must not start a factory reset
     assert "app_buttons_init" not in c and "sw0" not in (tmp_path / "tlsr8258_generic.overlay").read_text()
 
@@ -503,3 +505,16 @@ def test_relative_output_directory_is_made_absolute(tmp_path, monkeypatch):
     monkeypatch.setattr("zigbee_builder.build.build", lambda project, out, env: seen.update(project=project, out=out))
     cli.main(["build", str(EX / "plug-relay.yaml"), "-o", "rel/out"])
     assert seen["project"].is_absolute() and seen["out"].is_absolute()
+
+
+def test_search_on_power_on_can_be_turned_off(tmp_path):
+    d = wall()
+    d["service"]["search_on_power_on"] = False
+    render(Config.model_validate(d), tmp_path, EX)
+    g = (tmp_path / "zb_gen.h").read_text()
+    assert "ZBR_SEARCH_ON_POWER_ON" not in g and "ZBR_SEARCH_ON_BOOT" not in g
+    # no service input: it searches from boot anyway, the power-on rule is not needed
+    del d["service"]
+    render(Config.model_validate(d), tmp_path, EX)
+    g = (tmp_path / "zb_gen.h").read_text()
+    assert "ZBR_SEARCH_ON_BOOT" in g and "ZBR_SEARCH_ON_POWER_ON" not in g

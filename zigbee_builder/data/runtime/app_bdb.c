@@ -72,6 +72,7 @@ static bool bdb_runtime_ready;
 static bool leave_recommission_pending;
 static struct ev_timer_event_t *commissioning_retry_timer;
 static bool search_open;                       /* the search window */
+static bool power_on_checked;                  /* the search on power-on is decided once per boot */
 static struct ev_timer_event_t *search_timer;  /* closes it */
 static const uint8_t app_bdb_fixed_tc_addr[8] = {
 	0x0c, 0x80, 0x1e, 0xfe, 0xff, 0x16, 0xa7, 0x20,
@@ -282,6 +283,23 @@ void app_bdb_bootstrap_ready(void)
 			/* no service button: the device has no other way to be paired */
 			if (!joined) {
 				search_open = true;
+			}
+#elif defined(ZBR_SEARCH_ON_POWER_ON)
+			/*
+			 * Power was applied (a plug, a battery), not a wake from sleep, and the device has no
+			 * network: it searches for one, in a window. Once per boot: a leave ordered by the
+			 * coordinator rebuilds the runtime and must not open another one.
+			 */
+			if (!power_on_checked) {
+				power_on_checked = true;
+				if (!joined && !search_open && zbr_chip_cold_boot()) {
+					search_open = true;
+					if (ZBR_SEARCH_MS != 0U) {
+						search_timer = ev_timer_taskPost(search_window_end, NULL,
+										 ZBR_SEARCH_MS);
+					}
+					app_led_search_start();
+				}
 			}
 #endif
 			if (joined && idle && APP_BDB_ROLE_ED) {

@@ -99,7 +99,7 @@ static void led_apply(void)
 
 	if (identify_active) {
 		on = identify_blink_on;
-	} else if (!zb_isDeviceJoinedNwk()) {
+	} else if (!zb_isDeviceJoinedNwk() && zbr_search_active()) {
 		on = search_blink_on;
 	} else {
 		on = led_user_on;

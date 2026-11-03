@@ -398,12 +398,17 @@ void app_bdb_network_left(void)
 #if defined(CONFIG_ZIGBEE_BDB)
 	commissioning_start_requested = false;
 	app_bdb_commissioning_retry_cancel();
-	/* The service action opens the window before it leaves; a leave ordered by the coordinator
-	 * does not, and leaves the device waiting for its button. */
-	leave_recommission_pending = search_open;
-	if (search_open) {
-		app_bdb_commissioning_retry_schedule();
+	/* The device is out of the network, as after a reset to defaults: it searches for another one,
+	 * in a window (the service action has opened it already). */
+	if (!search_open) {
+		search_open = true;
+		if (ZBR_SEARCH_MS != 0U) {
+			search_timer = ev_timer_taskPost(search_window_end, NULL, ZBR_SEARCH_MS);
+		}
+		app_led_search_start();
 	}
+	leave_recommission_pending = true;
+	app_bdb_commissioning_retry_schedule();
 #endif
 }
 

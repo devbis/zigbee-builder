@@ -27,9 +27,12 @@ components:
     cf: cf
     cf1: cf1
     sel: sel
-    # calibration: datasheet defaults, check against a known load
-    shunt_micro_ohms: 1000
-    voltage_divider_milli: 2351000
+    # Scales of the stock firmware of this plug (its calibration record, 0x74208 of the flash):
+    # 5 V at 39.136364 Hz, 200 mA at 16.161616 Hz, 36 W at 23.532110 Hz of the pulse outputs.
+    # 230 V is 1.8 kHz on CF1.
+    voltage_v_per_hz: 110/861
+    current_a_per_hz: 99/8000
+    power_w_per_hz: 436/285
     cf_pulses_per_kwh: 3200
 
 endpoints:

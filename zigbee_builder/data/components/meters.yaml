@@ -10,3 +10,10 @@ bl0937:
     cf_pulses_per_kwh: {dt: cf-pulses-per-kwh, default: 3200}
     current_noise_floor_ma: {dt: current-noise-floor-milliamps, default: 14}
   flags: {sel_high_is_voltage: {dt: sel-high-is-voltage, default: true}}
+  # Scales measured on the product, units per Hz of the pulse output (numerically the same as
+  # milli-units per millihertz): a number or a fraction "110/861". With one given, the matching
+  # resistor value above is not used for that quantity.
+  scales:
+    voltage_v_per_hz: {dt: voltage-mv-per-mhz}
+    current_a_per_hz: {dt: current-ma-per-mhz}
+    power_w_per_hz: {dt: power-mw-per-mhz}

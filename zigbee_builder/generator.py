@@ -5,6 +5,7 @@ import json
 import re
 import shutil
 from dataclasses import dataclass, field
+from fractions import Fraction
 from pathlib import Path
 
 import jinja2
@@ -153,6 +154,18 @@ def _kind_relay(ctx: Ctx, c, spec, bus_label):
     }
 
 
+def _ratio(cid, key, value) -> Fraction:
+    """A scale as an exact fraction: from 110/861 or from a number (to 6 digits)."""
+    try:
+        r = Fraction(str(value)) if isinstance(value, str) else Fraction(float(value))
+        r = r.limit_denominator(1_000_000)
+    except (ValueError, ZeroDivisionError):
+        raise ConfigError(f"component '{cid}': {key}: '{value}' is not a number or a fraction like 110/861")
+    if r <= 0:
+        raise ConfigError(f"component '{cid}': {key} must be positive")
+    return r
+
+
 def _kind_energy_meter(ctx: Ctx, c, spec, bus_label):
     props, lines = {}, []
     for pname in spec["pins"]:
@@ -163,6 +176,10 @@ def _kind_energy_meter(ctx: Ctx, c, spec, bus_label):
         lines.append(f"\t\t{pname}-gpios = <&{p.node} {p.num} GPIO_ACTIVE_HIGH>;\n")
     for k, v in spec["props"].items():
         lines.append(f"\t\t{v['dt']} = <{int(c.model_extra.get(k, v['default']))}>;\n")
+    for k, v in spec.get("scales", {}).items():
+        if k in c.model_extra:
+            r = _ratio(c.id, k, c.model_extra[k])
+            lines.append(f"\t\t{v['dt']} = <{r.numerator} {r.denominator}>;\n")
     for k, v in spec["flags"].items():
         if c.model_extra.get(k, v["default"]):
             lines.append(f"\t\t{v['dt']};\n")

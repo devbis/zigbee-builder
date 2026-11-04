@@ -518,3 +518,32 @@ def test_search_on_power_on_can_be_turned_off(tmp_path):
     render(Config.model_validate(d), tmp_path, EX)
     g = (tmp_path / "zb_gen.h").read_text()
     assert "ZBR_SEARCH_ON_BOOT" in g and "ZBR_SEARCH_ON_POWER_ON" not in g
+
+
+def meter_overlay(tmp_path, **extra):
+    d = yaml.safe_load((EX / "plug-bl0937.yaml").read_text())
+    comp = next(c for c in d["components"] if c["type"] == "bl0937")
+    for k in ("voltage_v_per_hz", "current_a_per_hz", "power_w_per_hz"):
+        comp.pop(k, None)
+    comp.update(extra)
+    render(Config.model_validate(d), tmp_path, EX)
+    return (tmp_path / "tlsr8258_generic.overlay").read_text()
+
+
+def test_meter_scales_become_fractions(tmp_path):
+    o = meter_overlay(tmp_path, voltage_v_per_hz="110/861", current_a_per_hz=0.012375,
+                      power_w_per_hz="436/285")
+    assert "voltage-mv-per-mhz = <110 861>;" in o
+    assert "current-ma-per-mhz = <99 8000>;" in o
+    assert "power-mw-per-mhz = <436 285>;" in o
+
+
+def test_meter_without_scales_keeps_the_resistors(tmp_path):
+    o = meter_overlay(tmp_path)
+    assert "per-mhz" not in o and "voltage-divider-milli" in o
+
+
+@pytest.mark.parametrize("bad", ["abc", 0, -1, "1/0"])
+def test_meter_scale_must_be_a_positive_number(tmp_path, bad):
+    with pytest.raises(ConfigError, match="voltage_v_per_hz"):
+        meter_overlay(tmp_path, voltage_v_per_hz=bad)

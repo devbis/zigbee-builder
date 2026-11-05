@@ -478,11 +478,25 @@ static af_simple_descriptor_t ep{{ ep.id }}_desc = {
 {% endfor %}
 /* ---- inputs -------------------------------------------------------- */
 {% for c in comps.values() if c.kind == 'binary_input' %}
+{% if plugin_files %}
+static bool {{ c.id }}_active;
+
+/* The input changed (its debounced, delayed logical level); a plugin implements this */
+__attribute__((weak)) void zb_input_{{ c.id }}_on_change(bool active)
+{
+	ARG_UNUSED(active);
+}
+
+{% endif %}
 static void {{ c.id }}_changed(bool active)
 {
 {% for u in c.users %}
 	{{ u }}
 {% endfor %}
+{% if plugin_files %}
+	{{ c.id }}_active = active;
+	zb_input_{{ c.id }}_on_change(active);
+{% endif %}
 	ARG_UNUSED(active);
 }
 {% endfor %}
@@ -702,6 +716,41 @@ static void zcl_hook(zclIncoming_t *in)
 static zcl_specClusterInfo_t ep{{ ep.id }}_clusters[{{ [(COMMON if ep.first else 0) + ep.clusters | length, 1] | max }}U];
 {% endfor %}
 
+{% if plugin_files %}
+/* ---- what the plugins call (zb_user.h) ----------------------------- */
+{% for c in comps.values() if c.kind == 'relay' %}
+{% if c.onoff_var is not defined %}
+static bool {{ c.id }}_state;
+
+{% endif %}
+void zb_relay_{{ c.id }}_set(bool on)
+{
+{% if c.onoff_var is defined %}
+	zbr_onoff_set(&{{ c.onoff_var }}, on);
+{% else %}
+	{{ c.id }}_state = on;
+	{{ c.id }}_apply(on);
+{% endif %}
+}
+
+bool zb_relay_{{ c.id }}_get(void)
+{
+{% if c.onoff_var is defined %}
+	return {{ c.onoff_var }}.state;
+{% else %}
+	return {{ c.id }}_state;
+{% endif %}
+}
+
+{% endfor %}
+{% for c in comps.values() if c.kind == 'binary_input' %}
+bool zb_input_{{ c.id }}_get(void)
+{
+	return {{ c.id }}_active;
+}
+
+{% endfor %}
+{% endif %}
 void app_device_register(void)
 {
 	size_t n;

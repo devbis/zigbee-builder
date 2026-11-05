@@ -8,7 +8,10 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
+
+#include "zbr_timer.h"     /* zb_after(ms, fn, arg), zb_cancel(handle): one-shot timers on the Zigbee thread */
 
 /* Once at boot, after the endpoints are registered */
 void zb_user_init(void);
@@ -32,4 +35,18 @@ void zb_{{ c.name }}_send(uint8_t cmd, const uint8_t *data, uint16_t len);
 {% for id, n in c.commands %}
 #define ZB_{{ c.name | upper }}_CMD_{{ n | upper }} {{ id }}
 {% endfor %}
+{% endfor %}
+{% for c in comps.values() if c.kind == 'relay' %}
+
+/* ---- relay {{ c.id }} ---- */
+/* Switch it: the OnOff attribute (if the relay has an endpoint), a pulse and the saved state follow */
+void zb_relay_{{ c.id }}_set(bool on);
+bool zb_relay_{{ c.id }}_get(void);
+{% endfor %}
+{% for c in comps.values() if c.kind == 'binary_input' %}
+
+/* ---- input {{ c.id }} ---- */
+/* Its level changed (after the debounce and the release delay); implement it to react */
+void zb_input_{{ c.id }}_on_change(bool active);
+bool zb_input_{{ c.id }}_get(void);
 {% endfor %}

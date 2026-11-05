@@ -883,3 +883,34 @@ def test_plain_inputs_and_relays_unchanged(tmp_path):
     render(Config.model_validate(yaml.safe_load((EX / "plug-relay.yaml").read_text())), tmp_path, EX)
     c = (tmp_path / "zb_device.c").read_text()
     assert ".pulse_ms = 0," in c and ".release_ms = 0," in c
+
+
+def test_plugin_api_of_components(tmp_path):
+    d = yaml.safe_load((EX / "intercom-auto.yaml").read_text())
+    render(Config.model_validate(d), tmp_path, EX)
+    h = (tmp_path / "zb_user.h").read_text()
+    for fn in ("void zb_relay_door_set(bool on);", "bool zb_relay_mute_get(void);",
+               "void zb_input_line_on_change(bool active);", "bool zb_input_line_get(void);",
+               '#include "zbr_timer.h"'):
+        assert fn in h
+    c = (tmp_path / "zb_device.c").read_text()
+    assert "zbr_onoff_set(&ep3_onoff, on);" in c                      # a relay with an endpoint: through the OnOff
+    assert "__attribute__((weak)) void zb_input_line_on_change(bool active)" in c
+    assert "zb_input_line_on_change(active);" in c
+    assert "runtime/zbr_timer.c" in (tmp_path / "CMakeLists.txt").read_text()
+    assert (tmp_path / "plugins/auto_open.c").exists()
+
+
+def test_relay_without_an_endpoint_is_driven_directly(tmp_path):
+    d = yaml.safe_load((EX / "intercom-auto.yaml").read_text())
+    d["endpoints"] = [e for e in d["endpoints"] if e["id"] != 3]           # the door has no On/Off endpoint now
+    render(Config.model_validate(d), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    assert "static bool door_state;" in c and "door_apply(on);" in c
+
+
+def test_no_plugin_api_without_plugins(tmp_path):
+    render(Config.model_validate(intercom()), tmp_path, EX)                # no plugins: nothing is added to the code
+    c = (tmp_path / "zb_device.c").read_text()
+    assert "weak)) void zb_input_" not in c and "void zb_relay_" not in c
+    assert "zbr_timer.c" not in (tmp_path / "CMakeLists.txt").read_text()

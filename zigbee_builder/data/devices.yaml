@@ -12,3 +12,4 @@ on_off_light_switch: 0x0103
 on_off_switch: 0x0000
 ias_zone: 0x0402
 custom: 0xFFF0
+thermostat: 0x0301

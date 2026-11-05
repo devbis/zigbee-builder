@@ -513,13 +513,28 @@ static void measure(void)
 
 {% for b in bindings %}
 	if (ok_{{ ident(b.comp) }}{% if comps[b.comp].chan_valid is defined %} && {{ ident(b.comp) }}_{{ b.chan }}_valid{% endif %}) {
-{% if b.attr.a.c_type == 'float' %}
+{% if b.map %}
+		bool known = false;
+		{{ b.attr.a.c_type }} v = 0;
+
+		/* a datapoint value the map does not name leaves the attribute as it is */
+		switch ({{ ident(b.comp) }}_{{ b.chan }} / 1000) {
+{% for k, val in b.map %}
+		case {{ k }}:
+			v = {{ val }};
+			known = true;
+			break;
+{% endfor %}
+		default:
+			break;
+		}
+{% elif b.attr.a.c_type == 'float' %}
 		u32 v = zbr_float_bits({{ ident(b.comp) }}_{{ b.chan }}, {{ b.div }}U);
 {% else %}
 		{{ b.attr.a.c_type }} v = ({{ b.attr.a.c_type }})CLAMP({{ ident(b.comp) }}_{{ b.chan }} / {{ b.div }}, {{ b.attr.a.min }}, {{ b.attr.a.max }});
 {% endif %}
 
-		if (v != {{ b.var }}) {
+		if ({% if b.map %}known && {% endif %}v != {{ b.var }}) {
 			{{ b.var }} = v;
 			zcl_setAttrVal({{ b.ep }}, {{ b.cluster.cat.id }}, {{ b.attr.a.id }}, (u8 *)&{{ b.var }});
 		}
@@ -603,8 +618,69 @@ void zbr_network_left(void)
 	zb_user_network_left();
 }
 
+{% if writes %}
+/* The coordinator wrote an attribute that is a datapoint of the MCU: send it, and take the value as the
+ * channel's until the MCU reports (the measure loop would put the old one back otherwise). A value the
+ * map does not know is not sent; the loop puts the channel's value back. */
+static void zb_mcu_write(u8 ep, u16 cluster, u16 attr, u8 type, const u8 *data)
+{
+{% for w in writes %}
+	if (ep == {{ w.ep }} && cluster == {{ w.cluster }} && attr == {{ w.attr }}) {
+		if (type != ZCL_DATA_TYPE_{{ w.zcl_type }}) {
+			return;     /* the stack refused it: wrong type */
+		}
+		{{ w.c_type }} val;
+		int32_t raw;
+		bool known = true;
+
+		memcpy(&val, data, sizeof(val));
+{% if w.map %}
+		switch (val) {
+{% for av, dv in w.map %}
+		case {{ av }}:
+			raw = {{ dv }};
+			break;
+{% endfor %}
+		default:
+			raw = 0;
+			known = false;
+			break;
+		}
+{% else %}
+		raw = zbr_dp_unscale((int32_t)val, {{ w.mul }}, {{ w.den2 }});
+{% if w.lo is not none %}
+		raw = CLAMP(raw, {{ w.lo }}, {{ w.hi }});
+{% endif %}
+{% endif %}
+		if (known) {
+			uint8_t buf[IOTDRV_TUYA_MAX_DATA];
+			int n = iotdrv_tuya_dp_encode_u32(buf, sizeof(buf), {{ w.dp }}, {{ w.dp_type }}, (uint32_t)raw);
+
+			if (n > 0) {
+				(void)iotdrv_tuya_mcu_send_dp(&{{ w.comp }}_mcu, buf, (size_t)n);
+			}
+			{{ w.comp }}_{{ w.chan }} = zbr_dp_scale(raw, {{ w.num }}, {{ w.den }});
+			{{ w.comp }}_{{ w.chan }}_valid = true;
+		}
+		return;
+	}
+{% endfor %}
+}
+
+{% endif %}
 static void zcl_hook(zclIncoming_t *in)
 {
+{% if writes %}
+	if (in->hdr.cmd == ZCL_CMD_WRITE || in->hdr.cmd == ZCL_CMD_WRITE_UNDIVIDED ||
+	    in->hdr.cmd == ZCL_CMD_WRITE_NO_RSP) {
+		const zclWriteCmd_t *w = in->attrCmd;
+
+		for (u8 i = 0; i < w->numAttr; i++) {
+			zb_mcu_write(in->msg->indInfo.dst_ep, in->msg->indInfo.cluster_id, w->attrList[i].attrID,
+				     w->attrList[i].dataType, w->attrList[i].attrData);
+		}
+	}
+{% endif %}
 {% for c in customs %}
 	if ((in->hdr.cmd == ZCL_CMD_WRITE || in->hdr.cmd == ZCL_CMD_WRITE_UNDIVIDED ||
 	     in->hdr.cmd == ZCL_CMD_WRITE_NO_RSP) && in->msg->indInfo.cluster_id == {{ c.id }}) {

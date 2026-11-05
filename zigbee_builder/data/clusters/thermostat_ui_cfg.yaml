@@ -1,0 +1,14 @@
+# Thermostat User Interface Configuration (0x0204)
+name: thermostat_ui_cfg
+id: ZCL_CLUSTER_HVAC_USER_INTERFACE_CONFIG
+header: zcl/hvac/zcl_thermostat_ui_cfg.h
+register: zcl_thermostat_ui_cfg_register
+kconfig: [CONFIG_ZIGBEE_ZCL_THERMOSTAT_UI_CFG=y]
+attributes:
+  temperature_display_mode:
+    {id: ZCL_ATTRID_HVAC_UI_CFG_TEMPERATURE_DISPLAY_MODE, type: ENUM8, c_type: u8, access: RW, channel: display_mode,
+     scale: 1, min: 0, max: 1, enum: {celsius: 0, fahrenheit: 1}}
+  keypad_lockout:
+    {id: ZCL_ATTRID_HVAC_UI_CFG_KEYPAD_LOCKOUT, type: ENUM8, c_type: u8, access: RW, channel: keypad_lockout,
+     scale: 1, min: 0, max: 5,
+     enum: {no_lockout: 0, level1: 1, level2: 2, level3: 3, level4: 4, level5: 5}}

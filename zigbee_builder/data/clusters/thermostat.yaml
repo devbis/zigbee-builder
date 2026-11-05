@@ -1,0 +1,47 @@
+# Thermostat (0x0201): temperatures in 0.01 degC. The stack handles the cluster's commands (the set point
+# raise/lower and the schedule ones go to no application: they answer as unsupported). A writable attribute
+# is writable only where its binding says `write: true` (a channel the MCU accepts values on).
+name: thermostat
+id: ZCL_CLUSTER_HVAC_THERMOSTAT
+header: zcl/hvac/zcl_thermostat.h
+register: zcl_thermostat_register
+kconfig: [CONFIG_ZIGBEE_ZCL_THERMOSTAT=y]
+attributes:
+  local_temperature:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_LOCAL_TEMPERATURE, type: INT16, c_type: s16, access: RR, channel: temperature,
+     scale: 0.01, invalid: 0x8000, min: -27315, max: 32767, report: {min: 10s, max: 5min, change: 0.5}}
+  outdoor_temperature:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_OUTDOOR_TEMPERATURE, type: INT16, c_type: s16, access: RR,
+     channel: outdoor_temperature, scale: 0.01, invalid: 0x8000, min: -27315, max: 32767,
+     report: {min: 10s, max: 5min, change: 0.5}}
+  heating_setpoint:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_OCCUPIED_HEATING_SETPOINT, type: INT16, c_type: s16, access: RWR,
+     channel: setpoint, scale: 0.01, min: -27315, max: 32767, report: {min: 0s, max: 5min, change: 0.5}}
+  cooling_setpoint:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_OCCUPIED_COOLING_SETPOINT, type: INT16, c_type: s16, access: RWR,
+     channel: setpoint, scale: 0.01, min: -27315, max: 32767, report: {min: 0s, max: 5min, change: 0.5}}
+  min_heat_limit:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_MIN_HEAT_SETPOINT_LIMIT, type: INT16, c_type: s16, access: RW,
+     channel: min_limit, scale: 0.01, min: -27315, max: 32767}
+  max_heat_limit:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_MAX_HEAT_SETPOINT_LIMIT, type: INT16, c_type: s16, access: RW,
+     channel: max_limit, scale: 0.01, min: -27315, max: 32767}
+  min_deadband:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_MIN_SETPOINT_DEAD_BAND, type: INT8, c_type: s8, access: RW,
+     channel: deadband, scale: 0.1, min: -128, max: 127}
+  calibration:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_LOCAL_TEMP_CALIBRATION, type: INT8, c_type: s8, access: RW,
+     channel: calibration, scale: 0.1, min: -128, max: 127}
+  control_sequence: {id: ZCL_ATTRID_HVAC_THERMOSTAT_CTRL_SEQUENCE_OF_OPERATION, type: ENUM8, c_type: u8, access: R, const: 2}
+  system_mode:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_SYS_MODE, type: ENUM8, c_type: u8, access: RWR, channel: mode, scale: 1,
+     min: 0, max: 9, enum: {"off": 0, auto: 1, cool: 3, heat: 4, emergency_heat: 5, precooling: 6, fan_only: 7,
+                            dry: 8, sleep: 9}, report: {min: 0s, max: 5min, change: 0}}
+  running_state:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_RUNNING_STATE, type: BITMAP16, c_type: u16, access: RR, channel: running_state,
+     scale: 1, min: 0, max: 0xFFFF, enum: {idle: 0, heat: 1, cool: 2, fan: 4},
+     report: {min: 0s, max: 5min, change: 0}}
+  programming_mode:
+    {id: ZCL_ATTRID_HVAC_THERMOSTAT_PROGRAMMING_OPERATION_MODE, type: BITMAP8, c_type: u8, access: RWR,
+     channel: programming_mode, scale: 1, min: 0, max: 255, enum: {manual: 0, schedule: 1, economy: 2},
+     report: {min: 0s, max: 5min, change: 0}}

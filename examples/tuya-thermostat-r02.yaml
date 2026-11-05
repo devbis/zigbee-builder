@@ -1,0 +1,51 @@
+# Floor heating thermostat "Tuya_Thermostat_r02": the module only speaks to the thermostat's own MCU over UART0
+# (9600 baud, Tuya serial protocol), the thermostat is the MCU. Datapoints are channels; `write: true` lets the
+# coordinator write a channel's attribute (it goes to the MCU, which reports back), `range` limits what is sent,
+# `map` turns the MCU's numbers into the attribute's values and back. Not here yet: the weekly schedule.
+zigbee:
+  name: tuya-thermostat-r02
+  manufacturer: DEVBIS
+  model: Tuya_Thermostat_r02
+  chip: tlsr8258
+  role: router
+  manufacturer_code: 0x1141
+  ota_image_type: 0x5A02
+
+pins:
+  mcu_tx: PB1
+  mcu_rx: PB7
+
+components:
+  - id: th
+    type: tuya_mcu
+    uart: {tx: mcu_tx, rx: mcu_rx, baud: 9600}
+    channels:
+      power:      {dp: 0x01, type: bool,  write: true}
+      temp:       {dp: 0x18, type: value, per_count: 0.1}                                 # degC
+      setpoint:   {dp: 0x10, type: value, per_count: 0.1, write: true, range: [5, 45]}
+      min_limit:  {dp: 0x1a, type: value, per_count: 0.1, write: true, range: [5, 15]}
+      max_limit:  {dp: 0x13, type: value, per_count: 0.1, write: true, range: [15, 45]}
+      deadband:   {dp: 0x67, type: value, per_count: 1,   write: true, range: [1, 5]}    # whole degrees
+      outdoor:    {dp: 0x66, type: value, per_count: 0.1}
+      frost:      {dp: 0x6f, type: value, per_count: 0.1, write: true, range: [0, 100]}
+      state:      {dp: 0x24, type: enum}
+      lock:       {dp: 0x28, type: bool,  write: true}
+
+endpoints:
+  - id: 1
+    device: thermostat
+    clusters:
+      thermostat:
+        local_temperature:   {source: th.temp}
+        outdoor_temperature: {source: th.outdoor}
+        heating_setpoint:    {source: th.setpoint, write: true}
+        cooling_setpoint:    {source: th.setpoint, write: true}          # the same channel, a second attribute
+        min_heat_limit:      {source: th.min_limit, write: true}
+        max_heat_limit:      {source: th.max_limit, write: true}
+        min_deadband:        {source: th.deadband, write: true, multiplier: 1, divisor: 1}   # the stock firmware counts in degrees
+        system_mode:         {source: th.power, write: true, map: {false: off, true: heat}}
+        running_state:       {source: th.state, map: {0: heat, 1: idle}}  # r02: 0 is heating
+        extra:                                                           # an attribute of the device
+          0xF001: {name: frost_protect, type: int16, source: th.frost, write: true, multiplier: 1, divisor: 100}
+      thermostat_ui_cfg:
+        keypad_lockout:      {source: th.lock, write: true, map: {false: no_lockout, true: level1}}

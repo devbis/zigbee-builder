@@ -69,6 +69,26 @@ cluster only when its value is bound, and the value's step (`multiplier / diviso
 Concentration clusters the stack has no code for: `co2` (0x040D, the channel in ppm, the attribute a fraction),
 `formaldehyde` (0x042B) and `pm25` (0x042A, ug/m3).
 
+## A host MCU on a UART (Tuya)
+
+`type: tuya_mcu` is a component for a module whose device is a Tuya MCU behind a UART (a CO2 sensor, an energy
+meter, a thermostat ...). The protocol, its handshake and the network state come from `lib/tuya_mcu` of
+zephyr-iot-drivers; the YAML says which datapoint is which channel. A channel is in the base unit of its
+quantity: `per_count` is that unit per count of the datapoint (a number or a fraction, `0.1`, `1/3`), and the
+clusters take the channels as they take any sensor's (`source: air.co2`), with their own multiplier and divisor.
+Nothing is reported until the MCU has sent the datapoint. See `examples/tuya-co2-r02.yaml`.
+
+    components:
+      - id: air
+        type: tuya_mcu
+        uart: {tx: mcu_tx, rx: mcu_rx, baud: 9600}      # names from pins:
+        channels:
+          co2:         {dp: 2,  type: value, per_count: 1}
+          temperature: {dp: 12, type: value, per_count: 0.1}
+
+Types: `value` (signed 32 bit), `bool`, `enum`. Read only so far (MCU to Zigbee), TLSR8258 only (UART0, TX one
+of PA2 PB1 PC2 PD0 PD7, RX one of PA0 PB0 PB7 PC3 PC5 PD6).
+
 ## Chips
 | Chip | Toolchain | Status |
 |---|---|---|

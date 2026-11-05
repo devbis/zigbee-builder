@@ -686,3 +686,54 @@ def test_concentration_clusters(tmp_path):
     for fn in ("zbr_register_co2", "zbr_register_pm25", "zbr_register_formaldehyde"):
         assert fn in c
     assert (tmp_path / "runtime/zbr.c").read_text().count("ZBR_CONCENTRATION(") >= 3
+
+
+def tuya():
+    return yaml.safe_load((EX / "tuya-co2-r02.yaml").read_text())
+
+
+def test_tuya_mcu_example(tmp_path):
+    render(Config.model_validate(tuya()), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    # co2: ppm -> milli-ppm -> a float fraction; temperature 0.1 degC per count -> milli-degC -> 0.01 degC
+    assert "zbr_dp_scale((int32_t)iotdrv_tuya_dp_u32(dp), 1000, 1)" in c
+    assert "zbr_dp_scale((int32_t)iotdrv_tuya_dp_u32(dp), 100, 1)" in c
+    assert "zbr_float_bits(air_co2, 1000000000U)" in c
+    assert "if (ok_air && air_co2_valid)" in c                  # nothing is reported before the MCU said it
+    conf = (tmp_path / "prj.conf").read_text()
+    assert "CONFIG_IOTDRV_TUYA_MCU=y" in conf and "CONFIG_SERIAL=y" in conf and "CONFIG_SERIAL=n" not in conf
+    ov = (tmp_path / "tlsr8258_generic.overlay").read_text()
+    assert "current-speed = <9600>" in ov and "TLSR8258_GPIO_PB7" in ov
+
+
+def test_tuya_mcu_fraction_per_count(tmp_path):
+    d = tuya()
+    d["components"][0]["channels"]["co2"]["per_count"] = "1/3"
+    render(Config.model_validate(d), tmp_path, EX)
+    assert "zbr_dp_scale((int32_t)iotdrv_tuya_dp_u32(dp), 1000, 3)" in (tmp_path / "zb_device.c").read_text()
+
+
+@pytest.mark.parametrize("patch,msg", [
+    (lambda d: d["components"][0].pop("uart"), "uart:"),
+    (lambda d: d["pins"].update(mcu_tx="PB0"), "cannot be the UART TX"),
+    (lambda d: d["pins"].update(mcu_rx="PB2"), "cannot be the UART RX"),
+    (lambda d: d["components"][0]["channels"]["humidity"].update(dp=2), "is on"),
+    (lambda d: d["components"][0]["channels"]["humidity"].update(dp=300), "not 0..255"),
+    (lambda d: d["components"][0]["channels"]["humidity"].update(type="string"), "none of"),
+    (lambda d: d["components"][0]["channels"]["humidity"].update(per_count=0), "positive"),
+    (lambda d: d["components"][0]["channels"]["humidity"].pop("dp"), "needs dp"),
+    (lambda d: d["components"][0].update(channels={}), "empty"),
+])
+def test_tuya_mcu_errors(patch, msg):
+    d = tuya()
+    patch(d)
+    with pytest.raises(ConfigError, match=msg):
+        resolve(Config.model_validate(d))
+
+
+def test_tuya_mcu_needs_a_chip_with_a_uart():
+    d = tuya()
+    d["zigbee"]["chip"] = "esp32h2"
+    d["pins"] = {"mcu_tx": "GPIO10", "mcu_rx": "GPIO11"}
+    with pytest.raises(ConfigError, match="no UART description"):
+        resolve(Config.model_validate(d))

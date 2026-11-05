@@ -5,6 +5,8 @@
  */
 #pragma once
 
+#include <zephyr/kernel.h>
+
 #include "app_common.h"
 
 struct zbr_onoff {
@@ -13,6 +15,9 @@ struct zbr_onoff {
 	u8 nv_item;
 	void (*apply)(bool on);   /* drive the output */
 	bool state;               /* the OnOff attribute points here */
+	/* a pulse: on turns the output off again after this long (0: not a pulse); the state is not kept */
+	uint16_t pulse_ms;
+	struct k_work_delayable pulse_work;
 };
 
 void zbr_onoff_init(struct zbr_onoff *o);

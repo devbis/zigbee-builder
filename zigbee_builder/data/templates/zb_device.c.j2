@@ -284,7 +284,7 @@ static {{ at.a.c_type }} {{ at.var }} = ({{ at.a.c_type }}){{ at.init }};
 {% endfor %}
 
 {% if cl.onoff %}
-static struct zbr_onoff {{ cl.onoff.var }} = {.ep = {{ cl.onoff.ep }}, .startup = {{ cl.onoff.startup }}, .nv_item = {{ cl.onoff.item }}, .apply = {{ cl.onoff.relay.id }}_apply};
+static struct zbr_onoff {{ cl.onoff.var }} = {.ep = {{ cl.onoff.ep }}, .startup = {{ cl.onoff.startup }}, .nv_item = {{ cl.onoff.item }}, .pulse_ms = {{ cl.onoff.pulse }}, .apply = {{ cl.onoff.relay.id }}_apply};
 
 static const zclAttrInfo_t {{ cl.var }}_attrs[] = {
 	{ ZCL_ATTRID_ONOFF, ZCL_DATA_TYPE_BOOLEAN, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (u8 *)&{{ cl.onoff.var }}.state },
@@ -492,6 +492,7 @@ static struct zbr_input inputs[] = {
 	{
 		.spec = GPIO_DT_SPEC_GET(DT_NODELABEL({{ c.label }}), gpios),
 		.debounce_ms = {{ c.debounce }},
+		.release_ms = {{ c.release }},
 		.wake = {{ 'true' if c.wake else 'false' }},
 		.cb = {{ c.id }}_changed,
 		.initial = {{ c.initial }},

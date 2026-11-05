@@ -834,3 +834,52 @@ def test_yaml_off_is_the_name_off():
     from zigbee_builder.generator import load_catalog
     assert load_catalog("clusters")["thermostat"]["attributes"]["system_mode"]["enum"]["off"] == 0
     assert load_catalog("clusters")["fan_control"]["attributes"]["fan_mode"]["enum"]["on"] == 4
+
+
+def intercom():
+    return yaml.safe_load((EX / "intercom-line.yaml").read_text())
+
+
+def test_release_delay_and_pulse_reach_the_code(tmp_path):
+    render(Config.model_validate(intercom()), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    assert ".release_ms = 4000," in c and ".debounce_ms = 100," in c
+    assert ".pulse_ms = 600," in c and ".pulse_ms = 0," in c          # the door pulses, the mute relay does not
+    assert ".release_ms = 0," in c                                    # the service button: no delay
+
+
+def test_pulse_starts_off():
+    d = intercom()
+    r = resolve(Config.model_validate(d))
+    door = next(o for o in r["onoffs"] if o["relay"]["id"] == "door")
+    assert door["pulse"] == 600 and door["startup"] == 0              # off, not "previous"
+    mute = next(o for o in r["onoffs"] if o["relay"]["id"] == "mute")
+    assert mute["pulse"] == 0 and mute["startup"] == 2                # the others keep the default
+
+
+@pytest.mark.parametrize("patch,msg", [
+    (lambda d: d["endpoints"][2]["clusters"]["on_off"].update(startup="previous"), "is a pulse"),
+    (lambda d: d["endpoints"][2]["clusters"]["on_off"].update(startup="on"), "is a pulse"),
+    (lambda d: d["components"][2].update(pulse="5ms"), "shorter than 10 ms"),
+    (lambda d: d["components"][2].update(pulse="70s"), "out of"),
+    (lambda d: d["components"][2].update(pulse="soon"), "not a duration"),
+    (lambda d: d["components"][0].update(release_delay="70s"), "out of"),
+    (lambda d: d["components"][0].update(release_delay="x"), "not a duration"),
+])
+def test_pulse_and_release_checks(patch, msg):
+    d = intercom()
+    patch(d)
+    with pytest.raises(ConfigError, match=msg):
+        resolve(Config.model_validate(d))
+
+
+def test_pulse_startup_off_is_fine():
+    d = intercom()
+    d["endpoints"][2]["clusters"]["on_off"]["startup"] = "off"
+    resolve(Config.model_validate(d))
+
+
+def test_plain_inputs_and_relays_unchanged(tmp_path):
+    render(Config.model_validate(yaml.safe_load((EX / "plug-relay.yaml").read_text())), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    assert ".pulse_ms = 0," in c and ".release_ms = 0," in c

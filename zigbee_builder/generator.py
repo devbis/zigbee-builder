@@ -107,6 +107,17 @@ def _kind_battery_adc(ctx: Ctx, c, spec, bus_label):
     ctx.overlay.append((ctx.chip.dir / ctx.chip.d["battery_adc"]["template"]).read_text())
 
 
+def _ms(cid: str, key: str, value, lo: int, hi: int) -> int:
+    """A duration option of a component, in milliseconds, between lo and hi."""
+    try:
+        ms = millis(value)
+    except ValueError:
+        raise ConfigError(f"component '{cid}': {key}: {value!r} is not a duration (500ms, 4s)")
+    if not lo <= ms <= hi:
+        raise ConfigError(f"component '{cid}': {key}: {value!r} is out of {lo} ms .. {hi} ms")
+    return ms
+
+
 def _kind_binary_input(ctx: Ctx, c, spec, bus_label):
     ref = c.model_extra.get("pin")
     if ref is None:
@@ -122,8 +133,9 @@ def _kind_binary_input(ctx: Ctx, c, spec, bus_label):
         f"\t\t{label}: {label} {{\n\t\t\tgpios = <&{p.node} {p.num} ({' | '.join(flags)})>;\n"
         f"\t\t\tlabel = \"{c.id}\";\n\t\t}};\n")
     deb = millis(c.model_extra.get("debounce", "50ms"))
+    release = _ms(c.id, "release_delay", c.model_extra.get("release_delay", 0), 0, 65535)
     ctx.comps[c.id] = {
-        "id": ident(c.id), "kind": "binary_input", "label": label, "debounce": deb,
+        "id": ident(c.id), "kind": "binary_input", "label": label, "debounce": deb, "release": release,
         "wake": bool(c.model_extra.get("wake", True)), "chans": {"active": None}, "includes": [],
         "users": [],   # (callback statements), filled by the clusters that use it
         "initial": 2, "service": False,
@@ -152,8 +164,11 @@ def _kind_relay(ctx: Ctx, c, spec, bus_label):
     led = "none" if led is False else led
     if led not in ("none", "same", "opposite"):
         raise ConfigError(f"component '{c.id}': status_led must be none, same or opposite")
+    pulse = _ms(c.id, "pulse", c.model_extra.get("pulse", 0), 0, 65535)
+    if "pulse" in c.model_extra and pulse < 10:
+        raise ConfigError(f"component '{c.id}': pulse: {c.model_extra['pulse']!r} is shorter than 10 ms")
     ctx.comps[c.id] = {
-        "id": ident(c.id), "kind": "relay", "label": label, "led": led, "chans": {},
+        "id": ident(c.id), "kind": "relay", "label": label, "led": led, "chans": {}, "pulse": pulse,
         "toggle_input": _toggle_input(ctx, c.id, c.model_extra), "includes": [], "users": [],
     }
 
@@ -732,12 +747,17 @@ def _onoff(ctx: Ctx, e, cl, ccfg, cat):
         raise ConfigError(f"endpoint {e.id}/on_off: source: '{ccfg.get('source')}' is not a relay or pwm_light component")
     if comp["kind"] == "pwm_light":
         _light_ep(comp, e.id)
-    startup = _word(ccfg.get("startup", "previous"))
+    pulse = comp.get("pulse", 0)
+    startup = _word(ccfg.get("startup", "off" if pulse else "previous"))
     if startup not in ("off", "on", "previous"):
         raise ConfigError(f"endpoint {e.id}/on_off: startup must be off, on or previous")
+    if pulse and startup != "off":
+        raise ConfigError(f"endpoint {e.id}/on_off: '{comp['id']}' is a pulse: it starts off, "
+                          f"startup: {startup} makes no sense")
     ctx.n_store += 1
     o = {"var": f"ep{e.id}_onoff", "ep": e.id, "relay": comp, "startup": ("off", "on", "previous").index(startup),
-         "item": 0xA0 + ctx.n_store - 1, "report": {k: seconds(v) for k, v in cat["report"].items()}}
+         "item": 0xA0 + ctx.n_store - 1, "pulse": pulse,
+         "report": {k: seconds(v) for k, v in cat["report"].items()}}
     comp["onoff_var"] = o["var"]
     ti = comp.get("toggle_input")
     if ti:

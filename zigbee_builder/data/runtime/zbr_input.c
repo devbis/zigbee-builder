@@ -77,16 +77,11 @@ static void input_held(struct k_work *work)
 	}
 }
 
-static void input_debounced(struct k_work *work)
+/* The logical level changed to @p level: watch the hold, tell the application */
+static void input_apply(struct zbr_input *in, int level)
 {
-	struct zbr_input *in =
-		CONTAINER_OF(k_work_delayable_from_work(work), struct zbr_input, work);
-	int level = gpio_pin_get_dt(&in->spec);
 	bool first = in->state < 0;
 
-	if (level < 0 || level == in->state) {
-		return;
-	}
 	in->state = (int8_t)level;
 
 	if (in->hold_ms != 0U) {
@@ -102,6 +97,40 @@ static void input_debounced(struct k_work *work)
 		return;
 	}
 	(void)tl_zbTaskPost(input_task, in);
+}
+
+static void input_debounced(struct k_work *work)
+{
+	struct zbr_input *in =
+		CONTAINER_OF(k_work_delayable_from_work(work), struct zbr_input, work);
+	int level = gpio_pin_get_dt(&in->spec);
+
+	if (level < 0) {
+		return;
+	}
+	if (level > 0) {
+		/* pressed again inside the release delay: the same activation goes on */
+		(void)k_work_cancel_delayable(&in->release_work);
+	} else if (in->release_ms != 0U && in->state > 0) {
+		/* released: the level stays active until the delay passes without a new press */
+		zbr_stay_awake((uint32_t)in->release_ms + AFTER_EVENT_MS);
+		(void)k_work_reschedule(&in->release_work, K_MSEC(in->release_ms));
+		return;
+	}
+	if (level == in->state) {
+		return;
+	}
+	input_apply(in, level);
+}
+
+static void input_released(struct k_work *work)
+{
+	struct zbr_input *in =
+		CONTAINER_OF(k_work_delayable_from_work(work), struct zbr_input, release_work);
+
+	if (gpio_pin_get_dt(&in->spec) == 0 && in->state > 0) {
+		input_apply(in, 0);
+	}
 }
 
 static void input_isr(const struct device *port, struct gpio_callback *cb, uint32_t pins)
@@ -123,6 +152,7 @@ void zbr_input_init(struct zbr_input *in, size_t n)
 		in->state = -1;
 		k_work_init_delayable(&in->work, input_debounced);
 		k_work_init_delayable(&in->hold_work, input_held);
+		k_work_init_delayable(&in->release_work, input_released);
 		(void)gpio_pin_configure_dt(&in->spec, GPIO_INPUT);
 		gpio_init_callback(&in->gcb, input_isr, BIT(in->spec.pin));
 		(void)gpio_add_callback(in->spec.port, &in->gcb);

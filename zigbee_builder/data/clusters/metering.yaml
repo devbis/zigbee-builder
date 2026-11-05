@@ -8,7 +8,7 @@ kconfig: [CONFIG_ZIGBEE_ZCL_METERING=y]
 attributes:
   summation:
     {id: ZCL_ATTRID_CURRENT_SUMMATION_DELIVERD, type: UINT48, c_type: u64, access: RR, channel: energy,
-     scale: 0.001, min: 0, max: 0x7FFFFFFF, report: {min: 60s, max: 10min, change: 0}}
+     pair: {multiplier: multiplier, divisor: divisor}, min: 0, max: 0x7FFFFFFF, report: {min: 60s, max: 10min, change: 0}}
   unit:        {id: ZCL_ATTRID_UNIT_OF_MEASURE, type: ENUM8, c_type: u8, access: R, const: 0}
   multiplier:  {id: ZCL_ATTRID_MULTIPLIER, type: UINT24, c_type: u32, access: R, const: 1}
   divisor:     {id: ZCL_ATTRID_DIVISOR, type: UINT24, c_type: u32, access: R, const: 1000}

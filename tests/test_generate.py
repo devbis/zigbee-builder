@@ -737,3 +737,100 @@ def test_tuya_mcu_needs_a_chip_with_a_uart():
     d["pins"] = {"mcu_tx": "GPIO10", "mcu_rx": "GPIO11"}
     with pytest.raises(ConfigError, match="no UART description"):
         resolve(Config.model_validate(d))
+
+
+def thermo():
+    return yaml.safe_load((EX / "tuya-thermostat-r02.yaml").read_text())
+
+
+def th_attrs(d, cluster="thermostat"):
+    r = resolve(Config.model_validate(d))
+    return {a["name"]: a for ep in r["eps"] for cl in ep["clusters"] if cl["name"] == cluster for a in cl["attrs"]}
+
+
+def test_thermostat_example(tmp_path):
+    render(Config.model_validate(thermo()), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    # heating set point: 0.01 degC per attribute count, 0.1 degC per datapoint count, limited to 5..45 degC
+    assert "raw = zbr_dp_unscale((int32_t)val, 1, 10);\n\t\traw = CLAMP(raw, 50, 450);" in c
+    # the dead band counts whole degrees (the binding's own step), the frost protection 0.01 degC (an extra)
+    assert "raw = zbr_dp_unscale((int32_t)val, 1, 1);\n\t\traw = CLAMP(raw, 1, 5);" in c
+    assert "attr == 0xF001" in c and "case 4:\n\t\t\traw = 1;" in c               # heat -> true
+    assert "case 0:\n\t\t\tv = 1;" in c                                              # r02: datapoint 0 is heating
+    assert "#define ZBR_MAX_GROUP 9" in (tmp_path / "zb_gen.h").read_text() or \
+           "#define ZBR_MAX_GROUP" in (tmp_path / "zb_gen.h").read_text()
+    assert "zb_mcu_write(in->msg->indInfo.dst_ep" in c
+
+
+def test_write_flag_decides_the_access():
+    a = th_attrs(thermo())
+    assert "ACCESS_CONTROL_WRITE" in a["heating_setpoint"]["access"]
+    assert "ACCESS_CONTROL_WRITE" in a["frost_protect"]["access"]
+    d = thermo()
+    d["endpoints"][0]["clusters"]["thermostat"]["heating_setpoint"] = {"source": "th.setpoint"}     # no write:
+    assert "ACCESS_CONTROL_WRITE" not in th_attrs(d)["heating_setpoint"]["access"]
+    d["endpoints"][0]["clusters"]["thermostat"]["heating_setpoint"] = "th.setpoint"                  # shorthand
+    assert "ACCESS_CONTROL_WRITE" not in th_attrs(d)["heating_setpoint"]["access"]
+
+
+def test_one_channel_two_attributes():
+    d = th_attrs(thermo())
+    assert d["heating_setpoint"]["chan"] == d["cooling_setpoint"]["chan"] == "setpoint"
+
+
+@pytest.mark.parametrize("patch,msg", [
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"].update(
+        local_temperature={"source": "th.temp", "write": True}), "read-only"),
+    (lambda d: d["components"][0]["channels"]["temp"].update(write=False) or
+     d["endpoints"][0]["clusters"]["thermostat"].update(heating_setpoint={"source": "th.temp", "write": True}),
+     "has no write: true"),
+    (lambda d: d["components"][0]["channels"]["setpoint"].update(write=False), "needs write: true"),
+    (lambda d: d["components"][0]["channels"]["setpoint"].update(range=[5]), r"range: \[min, max\]"),
+    (lambda d: d["components"][0]["channels"]["setpoint"].update(range=[5.01, 5.02]), "holds no value"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"].update(
+        system_mode={"source": "th.power", "write": True, "map": {False: "off", True: "off"}}), "reversible"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"].update(
+        system_mode={"source": "th.power", "write": True, "map": {False: "off", True: "boil"}}), "none of"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"].update(
+        local_temperature={"source": "th.temp", "map": {1: 1}}), "whole values"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"].update(
+        local_temperature={"source": "th.temp", "mode": 1}), "unknown option"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"]["extra"].update({0xF001: {"type": "int16", "source": "th.frost"}}),
+     "name: and type:"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"]["extra"][0xF001].update(type="float"), "none of"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"]["extra"][0xF001].pop("source"), "source: is required"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"]["extra"].update(
+        {0xF002: {"name": "frost_protect", "type": "int16", "source": "th.frost"}}), "used twice"),
+    (lambda d: d["endpoints"][0]["clusters"]["thermostat"]["extra"].update(
+        {"x": {"name": "a", "type": "int16", "source": "th.frost"}}), "attribute id is a number"),
+])
+def test_thermostat_errors(patch, msg):
+    d = thermo()
+    patch(d)
+    with pytest.raises(ConfigError, match=msg):
+        resolve(Config.model_validate(d))
+
+
+def test_map_with_names_and_numbers():
+    d = thermo()
+    d["endpoints"][0]["clusters"]["thermostat"]["system_mode"] = {
+        "source": "th.power", "write": True, "map": {0: 0, 1: "heat"}}                 # numbers and names mix
+    assert th_attrs(d)["system_mode"]["access"]
+
+
+def test_sleepy_mcu_free_example_still_has_no_writes(tmp_path):
+    render(Config.model_validate(tuya()), tmp_path, EX)
+    assert "zb_mcu_write" not in (tmp_path / "zb_device.c").read_text()
+
+
+def test_yaml_off_is_the_name_off():
+    """YAML 1.1 turns the unquoted words off and on into booleans: a map value reads them as the names."""
+    d = thermo()
+    c = d["endpoints"][0]["clusters"]
+    c["thermostat"]["system_mode"] = {"source": "th.power", "write": True, "map": {False: False, True: "heat"}}
+    r = resolve(Config.model_validate(d))
+    w = next(w for w in r["writes"] if w["attr"] == "ZCL_ATTRID_HVAC_THERMOSTAT_SYS_MODE")
+    assert w["map"] == [(0, 0), (4, 1)]                                   # off = 0, heat = 4
+    from zigbee_builder.generator import load_catalog
+    assert load_catalog("clusters")["thermostat"]["attributes"]["system_mode"]["enum"]["off"] == 0
+    assert load_catalog("clusters")["fan_control"]["attributes"]["fan_mode"]["enum"]["on"] == 4

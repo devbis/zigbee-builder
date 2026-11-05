@@ -220,6 +220,21 @@ int32_t zbr_dp_scale(int32_t raw, int32_t mul, int32_t den)
 	return q * mul + (r * mul) / den;
 }
 
+int32_t zbr_dp_unscale(int32_t v, int32_t mul, int32_t den)
+{
+	int32_t q = v / den;
+	int32_t r = (v % den) * mul;
+	int32_t hi = (INT32_MAX - mul) / mul;
+
+	if (q > hi) {
+		return INT32_MAX;
+	}
+	if (q < -hi) {
+		return -INT32_MAX;
+	}
+	return q * mul + (r >= 0 ? (r + den / 2) / den : (r - den / 2) / den);
+}
+
 #define ZBR_CONCENTRATION(name, cluster)                                                                \
 	status_t zbr_register_##name(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs,       \
 				     cluster_forAppCb_t cb)                                             \

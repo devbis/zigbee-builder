@@ -40,6 +40,9 @@ status_t zbr_register_analog_input(u8 ep, u16 manu_code, u8 n_attrs, const zclAt
  * mul * den < 2^31 */
 int32_t zbr_dp_scale(int32_t raw, int32_t mul, int32_t den);
 
+/* An attribute value times mul / den as a datapoint value (the inverse of the above), rounded to the nearest */
+int32_t zbr_dp_unscale(int32_t v, int32_t mul, int32_t den);
+
 /* Concentration measurement clusters (CO2 0x040D, PM2.5 0x042A, formaldehyde 0x042B), no commands */
 status_t zbr_register_co2(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs, cluster_forAppCb_t cb);
 status_t zbr_register_pm25(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs, cluster_forAppCb_t cb);

@@ -30,7 +30,8 @@ CUSTOM_TYPES = {
 ZCL_CLUSTER_NUM_MAX_DEFAULT = 8
 ZCL_ATTRIBUTE_NUM_MAX_DEFAULT = 16
 COMMON_CLUSTERS = 2   # Basic, Identify on the first endpoint
-GROUP_MAX = 4
+GROUP_MAX = 4        # reported attributes of one cluster that go out in one command (the default)
+GROUP_LIMIT = 8      # what one report frame holds
 
 
 def load_catalog(kind: str) -> dict:
@@ -54,6 +55,7 @@ class Binding:
     comp: str
     chan: str
     div: int
+    map: list | None = None     # [(datapoint value, attribute value)] of a channel that counts whole values
 
 
 @dataclass
@@ -220,6 +222,8 @@ def _kind_tuya_mcu(ctx: Ctx, c, spec, bus_label):
     for name, ch in (x.get("channels") or {}).items():
         if not isinstance(ch, dict) or "dp" not in ch:
             raise ConfigError(f"component '{c.id}': channel '{name}' needs dp:")
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", str(name)):
+            raise ConfigError(f"component '{c.id}': channel name '{name}' is lowercase letters, digits and _")
         dp = int(ch["dp"])
         if not 0 <= dp <= 255:
             raise ConfigError(f"component '{c.id}': channel '{name}': dp {dp} is not 0..255")
@@ -236,7 +240,21 @@ def _kind_tuya_mcu(ctx: Ctx, c, spec, bus_label):
         if num * den >= 2 ** 31:                              # the 32-bit conversion of the generated code
             raise ConfigError(f"component '{c.id}': channel '{name}': per_count {ch.get('per_count')} "
                               f"does not fit the 32-bit conversion")
-        dp_list.append({"name": name, "dp": dp, "type": DP_TYPES[typ], "num": num, "den": den})
+        write = bool(ch.get("write", False))
+        lo = hi = None
+        if "range" in ch:
+            rng = ch["range"]
+            if not write:
+                raise ConfigError(f"component '{c.id}': channel '{name}': range: limits what is written, "
+                                  f"it needs write: true")
+            if not isinstance(rng, list) or len(rng) != 2:
+                raise ConfigError(f"component '{c.id}': channel '{name}': range: [min, max] is expected")
+            a, b = (Fraction(str(v)) / r for v in rng)
+            lo, hi = math.ceil(a), math.floor(b)
+            if lo > hi:
+                raise ConfigError(f"component '{c.id}': channel '{name}': range {rng} holds no value of the datapoint")
+        dp_list.append({"name": name, "dp": dp, "type": DP_TYPES[typ], "num": num, "den": den, "write": write,
+                        "lo": lo, "hi": hi})
     if not dp_list:
         raise ConfigError(f"component '{c.id}': channels: is empty")
     ctx.comps[c.id] = {
@@ -448,7 +466,7 @@ def resolve(cfg: Config):
                 f"\t\t\tlabel = \"Status\";\n\t\t}};\n\t}};\n}};\n")
 
     # --- endpoints
-    eps, bindings = [], []
+    eps, bindings, writes = [], [], []
     for ei, e in enumerate(cfg.endpoints):
         if e.device not in devices:
             raise ConfigError(f"endpoint {e.id}: unknown device '{e.device}', known: {', '.join(devices)}")
@@ -481,6 +499,9 @@ def resolve(cfg: Config):
                 _onoff(ctx, e, cl, ccfg, cat)
                 ep["clusters"].append(cl)
                 continue
+            extras, ccfg = _extras(cname, ccfg, e.id)
+            if extras:
+                cat = {**cat, "attributes": {**cat["attributes"], **extras}}
             srcs, owners = _bindings_of(cname, cat, ccfg, e.id)
             for aname, a in cat["attributes"].items():
                 if aname in owners:                       # multiplier / divisor of a measured attribute
@@ -490,6 +511,11 @@ def resolve(cfg: Config):
                     a = {**a, "const": value}
                 elif "pair" in a:
                     mult, dvs = _pair_of(cat, a, srcs[aname][1], cname, aname)
+                    a = {**a, "scale": mult / dvs, "pair_vals": (mult, dvs)}
+                elif a.get("extra") or ("scale" in a and ("multiplier" in srcs[aname][1]
+                                                          or "divisor" in srcs[aname][1])):
+                    # an attribute of the device, or a step of the binding's own: multiplier / divisor
+                    mult, dvs = _step_of(cname, aname, srcs[aname][1])
                     a = {**a, "scale": mult / dvs, "pair_vals": (mult, dvs)}
                 elif "scale" in ccfg and aname == _first_measured(cat):
                     a = {**a, "scale": float(ccfg["scale"])}
@@ -521,6 +547,9 @@ def resolve(cfg: Config):
                 if div < 1:
                     raise ConfigError(f"{cname}.{aname}: scale {a['scale']} is finer than the channel unit")
                 at.update(init=a.get("invalid", 0), comp=comp, chan=chan, div=div)
+                bmap, wr = _write_and_map(ctx, e.id, cname, aname, a, comp, chan, srcs[aname][1], at)
+                if wr:
+                    writes.append(_write_of(e.id, cat, a, comp, chan, div, ctx.comps[comp], bmap))
                 if a.get("event"):
                     if ctx.comps[comp]["kind"] != "binary_input":
                         raise ConfigError(f"endpoint {e.id}/{cname}: source '{src}' is not a binary_input component")
@@ -540,7 +569,7 @@ def resolve(cfg: Config):
                     at["report"] = r
                 cl["attrs"].append(at)
                 if not a.get("event"):
-                    bindings.append(Binding(e.id, cl, aname, at, v, comp, chan, div))
+                    bindings.append(Binding(e.id, cl, aname, at, v, comp, chan, div, bmap))
             ep["clusters"].append(cl)
         eps.append(ep)
 
@@ -558,15 +587,17 @@ def resolve(cfg: Config):
                     items.append((ep["id"], cl, at))
     defaults = [(ep["id"], cl, at) for ep in eps for cl in ep["clusters"] for at in cl["attrs"] if "report" in at]
     # ota file / report group limits
+    group_max = GROUP_MAX
     for ep in eps:
         for cl in ep["clusters"]:
             n_rep = sum(1 for a in cl["attrs"] if "report" in a)
-            if n_rep > GROUP_MAX:
-                raise ConfigError(f"cluster {cl['name']}: more than {GROUP_MAX} reported attributes")
+            if n_rep > GROUP_LIMIT:
+                raise ConfigError(f"cluster {cl['name']}: more than {GROUP_LIMIT} reported attributes")
+            group_max = max(group_max, n_rep)
 
     return {
         "cfg": cfg, "chip": chip, "sleepy": sleepy, "power": power, "eps": eps, "ctx": ctx,
-        "bindings": bindings, "defaults": defaults, "inputs": ctx.inputs, "inputs_used": bool(ctx.inputs), "onoffs": ctx.onoffs, "lights": ctx.lights, "service": service, "customs": ctx.customs, "switches": any(ep["switch"] for ep in eps), "ias": ctx.ias, "items": items, "cluster_max": ctx_cluster_max,
+        "bindings": bindings, "writes": writes, "defaults": defaults, "inputs": ctx.inputs, "inputs_used": bool(ctx.inputs), "onoffs": ctx.onoffs, "lights": ctx.lights, "service": service, "customs": ctx.customs, "switches": any(ep["switch"] for ep in eps), "ias": ctx.ias, "items": items, "cluster_max": ctx_cluster_max, "group_max": group_max,
         "attr_max": max(ZCL_ATTRIBUTE_NUM_MAX_DEFAULT, max_attrs), "overlay_tail": overlay_tail,
         "ports": chip.ports(ctx.pins_used),
     }
@@ -741,6 +772,13 @@ def _bindings_of(cname, cat, ccfg, ep_id):
         short = ccfg.get("source")
         if bind is None and short is not None and ("." not in str(short) or an == _first_measured(cat)):
             bind = short
+        unknown = set(opts) - {"multiplier", "divisor", "report", "write", "map"}
+        if unknown:
+            raise ConfigError(f"endpoint {ep_id}/{cname}.{an}: unknown option {', '.join(sorted(unknown))} "
+                              f"(source, write, map, multiplier, divisor, report)")
+        if ("multiplier" in opts or "divisor" in opts) and "pair" not in a and not a.get("extra") \
+                and "scale" not in a:
+            raise ConfigError(f"endpoint {ep_id}/{cname}.{an}: it has no multiplier/divisor of its own")
         srcs[an] = (bind, opts)
     owners = {}
     for an, a in attrs.items():
@@ -751,12 +789,133 @@ def _bindings_of(cname, cat, ccfg, ep_id):
     return srcs, owners
 
 
+def _step_of(cname, aname, opts):
+    """multiplier and divisor of an attribute of the device (the default is 1/1)."""
+    out = []
+    for role in ("multiplier", "divisor"):
+        val = opts.get(role, 1)
+        if not isinstance(val, int) or isinstance(val, bool) or val < 1:
+            raise ConfigError(f"{cname}.{aname}: {role} must be a positive integer, got {val!r}")
+        out.append(val)
+    return out[0], out[1]
+
+
+def _extras(cname, ccfg, ep_id):
+    """Attributes of the device in a standard cluster (extra: {0xF001: {name, type, source, write ...}}):
+    catalog-like entries, and the cluster's config with each one's options under its name."""
+    extra = ccfg.get("extra")
+    if not extra:
+        return {}, ccfg
+    if not isinstance(extra, dict):
+        raise ConfigError(f"endpoint {ep_id}/{cname}: extra: is {{attribute id: {{name, type, source}}}}")
+    attrs, ccfg = {}, dict(ccfg)
+    for aid, d in extra.items():
+        where = f"endpoint {ep_id}/{cname} extra {aid!r}"
+        if not isinstance(aid, int) or not 0 <= aid <= 0xFFFF:
+            raise ConfigError(f"{where}: the attribute id is a number 0..0xFFFF")
+        if not isinstance(d, dict) or "name" not in d or "type" not in d:
+            raise ConfigError(f"{where}: name: and type: are required")
+        name, typ = str(d["name"]), d["type"]
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", name):
+            raise ConfigError(f"{where}: name '{name}' is lowercase letters, digits and _")
+        if typ not in CUSTOM_TYPES or typ == "float":
+            raise ConfigError(f"{where}: type '{typ}' is none of "
+                              f"{', '.join(t for t in CUSTOM_TYPES if t != 'float')}")
+        if name in ccfg or any(a["id"] == aid for a in attrs.values()):
+            raise ConfigError(f"{where}: '{name}' or its id is used twice")
+        if "source" not in d:
+            raise ConfigError(f"{where}: source: is required (a channel of a component)")
+        zt, ct, _ = CUSTOM_TYPES[typ]
+        lo, hi = {"u8": (0, 255), "s8": (-128, 127), "u16": (0, 0xFFFF), "s16": (-32768, 32767),
+                  "u32": (0, 0xFFFFFFFF), "s32": (-2 ** 31, 2 ** 31 - 1)}[ct]
+        access = "RWR" if d.get("write") else "RR"
+        a = {"id": f"0x{aid:04X}", "type": zt, "c_type": ct, "access": access, "channel": "", "scale": 1,
+             "min": lo, "max": hi, "extra": True, "report": {"min": "10s", "max": "5min", "change": 0}}
+        attrs[name] = a
+        ccfg[name] = {k: v for k, v in d.items() if k not in ("name", "type")}
+    return attrs, ccfg
+
+
+def _map_table(cname, aname, raw, a):
+    """A map {datapoint value: attribute value} as pairs of numbers; the attribute side may name the
+    attribute's enum values (system_mode: heat)."""
+    if not isinstance(raw, dict) or not raw:
+        raise ConfigError(f"{cname}.{aname}: map: is {{datapoint value: attribute value}}")
+    enum = a.get("enum", {})
+    out = []
+    for k, v in raw.items():
+        if isinstance(k, bool):
+            k = int(k)
+        if not isinstance(k, int):
+            raise ConfigError(f"{cname}.{aname}: map key {k!r} is a number or a boolean")
+        if isinstance(v, bool):           # YAML 1.1 reads the words off and on as booleans
+            name = "on" if v else "off"
+            v = enum[name] if name in enum else int(v)
+        if isinstance(v, str):
+            if v not in enum:
+                raise ConfigError(f"{cname}.{aname}: map value '{v}' is none of "
+                                  f"{', '.join(enum) or '(this attribute has no names: use numbers)'}")
+            v = enum[v]
+        if not isinstance(v, int):
+            raise ConfigError(f"{cname}.{aname}: map value {v!r} is a number or a name")
+        if not a["min"] <= v <= a["max"]:
+            raise ConfigError(f"{cname}.{aname}: map value {v} is out of the attribute's range")
+        out.append((k, v))
+    return out
+
+
+def _write_and_map(ctx, ep_id, cname, aname, a, comp, chan, opts, at):
+    """The binding's write: and map:. Returns (map or None, writes); a writable attribute whose binding does
+    not write is read-only."""
+    where = f"endpoint {ep_id}/{cname}.{aname}"
+    wr = bool(opts.get("write", False))
+    c = ctx.comps[comp]
+    d = next((x for x in c.get("dps", []) if x["name"] == chan), None)
+    if wr:
+        if "W" not in a["access"]:
+            raise ConfigError(f"{where}: the attribute is read-only, it takes no write:")
+        if d is None:
+            raise ConfigError(f"{where}: component '{comp}' takes no writes")
+        if not d["write"]:
+            raise ConfigError(f"{where}: channel '{chan}' of '{comp}' has no write: true")
+    else:
+        at["access"] = ACCESS[{"RW": "R", "RWR": "RR"}.get(a["access"], a["access"])]
+    mp = opts.get("map")
+    if mp is None:
+        return None, wr
+    if d is None or (d["num"], d["den"]) != (1000, 1):
+        raise ConfigError(f"{where}: map: needs a datapoint channel that counts whole values (per_count: 1)")
+    table = _map_table(cname, aname, mp, a)
+    if wr and len({v for _, v in table}) != len(table):
+        raise ConfigError(f"{where}: a map that is written must be reversible: a value is on two datapoint values")
+    return table, wr
+
+
+def _write_of(ep_id, cat, a, comp, chan, div, c, bmap):
+    """What the generated code does when the coordinator writes this attribute."""
+    where = f"endpoint {ep_id}/{cat['name']}.{chan}"
+    d = next(x for x in c["dps"] if x["name"] == chan)
+    if a["c_type"] == "float":
+        raise ConfigError(f"{where}: a float attribute cannot be written")
+    w = {"ep": ep_id, "cluster": cat["id"], "attr": a["id"], "c_type": a["c_type"], "zcl_type": a["type"],
+         "comp": c["id"],
+         "chan": chan, "dp": d["dp"], "dp_type": d["type"], "lo": d["lo"], "hi": d["hi"],
+         "num": d["num"], "den": d["den"], "map": None}
+    if bmap is not None:
+        w["map"] = [(v, k) for k, v in bmap]                 # attribute value -> datapoint value
+        return w
+    # datapoint count = attribute count * div (milli-units per attribute count) * den / num
+    mul, den = div * d["den"], d["num"]
+    g = math.gcd(mul, den)
+    mul, den = mul // g, den // g
+    if mul * den >= 2 ** 31:
+        raise ConfigError(f"{where}: the write conversion {mul}/{den} does not fit 32 bits")
+    w["mul"], w["den2"] = mul, den
+    return w
+
+
 def _pair_of(cat, a, opts, cname, aname):
     """multiplier and divisor of a measured attribute: the catalog's, or the binding's own."""
-    unknown = set(opts) - {"multiplier", "divisor", "report"}
-    if unknown:
-        raise ConfigError(f"{cname}.{aname}: unknown option {', '.join(sorted(unknown))} "
-                          f"(multiplier, divisor, report)")
     out = []
     for role in ("multiplier", "divisor"):
         pa = cat["attributes"][a["pair"][role]]
@@ -813,7 +972,7 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     ota_type = z.ota_image_type
     role_conf = ("router" if z.role == "router" else ("end_device" if r["sleepy"] else "end_device_awake"))
     zb_ctx = dict(r, z=z, role_conf=role_conf, ident=ident, ota_type=ota_type, manufacturer_code=manufacturer_code,
-                  sleep=sleep, GROUP_MAX=GROUP_MAX, pwr={"battery": 3, "mains": 1}[r["power"]],
+                  sleep=sleep, GROUP_MAX=r["group_max"], pwr={"battery": 3, "mains": 1}[r["power"]],
                   comps=ctx.comps, name=z.name, COMMON=COMMON_CLUSTERS,
                   measure_ms=1000 * (z.measure_interval or (z.poll_interval if (r["sleepy"] or z.role == "end_device") else 1)))
 

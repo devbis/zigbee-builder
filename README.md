@@ -86,8 +86,41 @@ Nothing is reported until the MCU has sent the datapoint. See `examples/tuya-co2
           co2:         {dp: 2,  type: value, per_count: 1}
           temperature: {dp: 12, type: value, per_count: 0.1}
 
-Types: `value` (signed 32 bit), `bool`, `enum`. Read only so far (MCU to Zigbee), TLSR8258 only (UART0, TX one
-of PA2 PB1 PC2 PD0 PD7, RX one of PA0 PB0 PB7 PC3 PC5 PD6).
+Types: `value` (signed 32 bit), `bool`, `enum`. TLSR8258 only (UART0, TX one of PA2 PB1 PC2 PD0 PD7, RX one of
+PA0 PB0 PB7 PC3 PC5 PD6).
+
+### Writing to the MCU (thermostat)
+
+A channel with `write: true` takes writes: the coordinator's write to a bound attribute goes to the MCU as a
+datapoint. The binding says `write: true` too, else the attribute stays read-only (the catalog has it
+writable). See `examples/tuya-thermostat-r02.yaml` (`thermostat`, `thermostat_ui_cfg`, `fan_control`).
+
+    channels:
+      setpoint: {dp: 0x10, type: value, per_count: 0.1, write: true, range: [5, 45]}
+      power:    {dp: 0x01, type: bool,  write: true}
+    clusters:
+      thermostat:
+        heating_setpoint: {source: th.setpoint, write: true}       # one channel may feed several attributes
+        cooling_setpoint: {source: th.setpoint, write: true}
+        system_mode: {source: th.power, write: true, map: {false: off, true: heat}}
+
+- `range: [lo, hi]` (the channel's unit) limits what is *sent*: the stack checks only a write's type and
+  access, so a value out of range is not refused with an error, it is clamped, and the attribute shows the
+  value the MCU was given.
+- `map: {datapoint value: attribute value}`: the MCU's numbers to the attribute's values, and back when it is
+  written (the table must be reversible then). The attribute side takes numbers or the names of the
+  attribute's enum (`heat`). A value the map does not know is not sent and leaves the attribute as it was. The
+  channel counts whole values (`per_count: 1`). Quote `"off"` and `"on"` where YAML would make them booleans;
+  a boolean on the attribute side is read as the name `off` or `on`.
+- `multiplier` / `divisor` on a binding set that attribute's own step, also where the catalog has no pair
+  (`min_deadband: {..., multiplier: 1, divisor: 1}` counts whole degrees).
+- `extra: {0xF001: {name: frost_protect, type: int16, source: th.frost, write: true, multiplier: 1, divisor: 100}}`
+  adds an attribute of the device to a standard cluster.
+- After a write the channel takes the value at once (the MCU reports it back right after), so the attribute does
+  not flick back.
+- A cluster reports at most 8 attributes (the number grows the report buffer from 4 as it is needed).
+
+Not done: the weekly schedule, the Time cluster, the other chips.
 
 ## Chips
 | Chip | Toolchain | Status |

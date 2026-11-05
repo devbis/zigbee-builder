@@ -40,6 +40,18 @@ its short press still does what its endpoint or relay says (the action is taken 
 for a reset acts once at the start). See `examples/wall-switch-4.yaml`. Not done: the sleep of a device out of the
 network (the stack refuses it), which needs a change in the Zephyr fork.
 
+## Inputs and outputs: `release_delay` and `pulse`
+
+- `binary_input` ... `release_delay: 4s` keeps the logical level active that long after the pin is released
+  (0 to 65 s). A new press inside the delay carries on the same activation (no new event), the delay starts over
+  at each release. For a signal that pulses while it lasts (a call on an intercom line, a PIR that drops out
+  between detections); `debounce` still filters the contact.
+- `relay` ... `pulse: 600ms` makes the output a pulse (10 ms to 65 s): `on` (a command, a toggle, the input) turns
+  it on and it turns itself off after that time; the OnOff attribute follows and reports both changes. Another
+  `on` in the pulse starts it over, `off` ends it. A pulse is not kept over a reset and starts off (`startup:
+  previous` or `on` on its endpoint is an error). For a door strike, a gate, a bell. See
+  `examples/intercom-line.yaml`.
+
 ## Docker
 
 The image has everything the builds need (the Zephyr fork and its modules, MCUboot, the TC32 LLVM from the fork's

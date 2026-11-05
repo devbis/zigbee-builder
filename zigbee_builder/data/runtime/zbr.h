@@ -36,6 +36,12 @@ void zbr_ota_start(af_simple_descriptor_t *desc, bool periodic_query);
 status_t zbr_register_analog_input(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs,
 				   cluster_forAppCb_t cb);
 
+/* Concentration measurement clusters (CO2 0x040D, PM2.5 0x042A, formaldehyde 0x042B), no commands */
+status_t zbr_register_co2(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs, cluster_forAppCb_t cb);
+status_t zbr_register_pm25(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs, cluster_forAppCb_t cb);
+status_t zbr_register_formaldehyde(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs,
+				   cluster_forAppCb_t cb);
+
 /* Send a cluster specific command from @p ep to its bindings (server -> client) */
 void zbr_send_cluster_cmd(u8 ep, u16 cluster, u16 manu_code, u8 cmd, const u8 *data, u16 len);
 

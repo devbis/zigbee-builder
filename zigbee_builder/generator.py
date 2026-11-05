@@ -428,8 +428,17 @@ def resolve(cfg: Config):
                 _onoff(ctx, e, cl, ccfg, cat)
                 ep["clusters"].append(cl)
                 continue
+            srcs, owners = _bindings_of(cname, cat, ccfg, e.id)
             for aname, a in cat["attributes"].items():
-                if "scale" in ccfg and aname == _first_measured(cat):
+                if aname in owners:                       # multiplier / divisor of a measured attribute
+                    owner, value = owners[aname]
+                    if srcs[owner][0] is None:            # the value is not bound: no pair either
+                        continue
+                    a = {**a, "const": value}
+                elif "pair" in a:
+                    mult, dvs = _pair_of(cat, a, srcs[aname][1], cname, aname)
+                    a = {**a, "scale": mult / dvs, "pair_vals": (mult, dvs)}
+                elif "scale" in ccfg and aname == _first_measured(cat):
                     a = {**a, "scale": float(ccfg["scale"])}
                 v = f"{cl['var']}_{aname}"
                 at = {"name": aname, "a": a, "var": v, "access": ACCESS[a["access"]]}
@@ -437,13 +446,7 @@ def resolve(cfg: Config):
                     at["const"] = a["const"]
                     cl["attrs"].append(at)
                     continue
-                # attribute-level source wins; the cluster's shorthand "source" is a component
-                # (every measured attribute takes its own channel) or component.channel (first one)
-                src = ccfg.get(aname)
-                short = ccfg.get("source")
-                if src is None and short is not None:
-                    if "." not in str(short) or aname == _first_measured(cat):
-                        src = short
+                src = srcs[aname][0]
                 if src is None:
                     cl["attrs"].append({**at, "init": a.get("invalid", 0), "unbound": True})
                     continue
@@ -454,7 +457,14 @@ def resolve(cfg: Config):
                 if chan not in ctx.comps[comp]["chans"]:
                     raise ConfigError(f"endpoint {e.id}/{cname}: component '{comp}' has no channel '{chan}'"
                                       f" (has: {', '.join(ctx.comps[comp]['chans'])})")
-                div = round(a["scale"] * 1000)
+                if "pair_vals" in a:        # the channel is in milli-units: the step must be a whole number of them
+                    mult, dvs = a["pair_vals"]
+                    if (1000 * mult) % dvs:
+                        raise ConfigError(f"endpoint {e.id}/{cname}.{aname}: multiplier/divisor {mult}/{dvs} is "
+                                          f"finer than the channel unit (a multiple of 1/1000 is needed)")
+                    div = 1000 * mult // dvs
+                else:
+                    div = round(a["scale"] * 1000)
                 if div < 1:
                     raise ConfigError(f"{cname}.{aname}: scale {a['scale']} is finer than the channel unit")
                 at.update(init=a.get("invalid", 0), comp=comp, chan=chan, div=div)
@@ -468,6 +478,7 @@ def resolve(cfg: Config):
                 # reporting defaults, user override in physical units
                 rep = dict(a.get("report", {}))
                 rep.update(ccfg.get("report", {}) if aname == _first_measured(cat) else {})
+                rep.update(srcs[aname][1].get("report", {}))
                 if "report" in a or rep:
                     r = {
                         "min": seconds(rep["min"]), "max": seconds(rep["max"]),
@@ -650,6 +661,60 @@ def _onoff(ctx: Ctx, e, cl, ccfg, cat):
         inp["users"].append(f"if (active) {{ zbr_onoff_set(&{o['var']}, !{o['var']}.state); }}")
     ctx.onoffs.append(o)
     cl["onoff"] = o
+
+
+def _bindings_of(cname, cat, ccfg, ep_id):
+    """The source of every attribute of a cluster (with its options) and the multiplier/divisor
+    attributes that belong to a measured one. An attribute is bound by "comp.chan" or by
+    {source: comp.chan, multiplier: 1, divisor: 100}; the pair is read-only and added to the cluster only
+    together with its bound value, so it is never bound on its own."""
+    attrs = cat["attributes"]
+    members = {}
+    for an, a in attrs.items():
+        for role, pn in (a.get("pair") or {}).items():
+            members[pn] = an
+    for pn in members:
+        if ccfg.get(pn) is not None:
+            raise ConfigError(f"endpoint {ep_id}/{cname}: '{pn}' is derived from {members[pn]}'s "
+                              f"multiplier/divisor, it takes no source")
+    srcs = {}
+    for an, a in attrs.items():
+        if "const" in a:
+            continue
+        bind, opts = ccfg.get(an), {}
+        if isinstance(bind, dict):
+            opts = dict(bind)
+            bind = opts.pop("source", None)
+        short = ccfg.get("source")
+        if bind is None and short is not None and ("." not in str(short) or an == _first_measured(cat)):
+            bind = short
+        srcs[an] = (bind, opts)
+    owners = {}
+    for an, a in attrs.items():
+        if "pair" in a:
+            mult, dvs = _pair_of(cat, a, srcs[an][1], cname, an)
+            owners[a["pair"]["multiplier"]] = (an, mult)
+            owners[a["pair"]["divisor"]] = (an, dvs)
+    return srcs, owners
+
+
+def _pair_of(cat, a, opts, cname, aname):
+    """multiplier and divisor of a measured attribute: the catalog's, or the binding's own."""
+    unknown = set(opts) - {"multiplier", "divisor", "report"}
+    if unknown:
+        raise ConfigError(f"{cname}.{aname}: unknown option {', '.join(sorted(unknown))} "
+                          f"(multiplier, divisor, report)")
+    out = []
+    for role in ("multiplier", "divisor"):
+        pa = cat["attributes"][a["pair"][role]]
+        val = opts.get(role, pa["const"])
+        if not isinstance(val, int) or isinstance(val, bool) or val < 1:
+            raise ConfigError(f"{cname}.{aname}: {role} must be a positive integer, got {val!r}")
+        limit = {"UINT16": 0xFFFF, "UINT24": 0xFFFFFF}.get(pa["type"], 0xFFFF)
+        if val > limit:
+            raise ConfigError(f"{cname}.{aname}: {role} {val} does not fit {pa['type']}")
+        out.append(val)
+    return out[0], out[1]
 
 
 def _first_measured(cat):

@@ -6,13 +6,13 @@ register: zcl_electricalMeasure_register
 kconfig: [CONFIG_ZIGBEE_ZCL_ELECTRICAL_MEASUREMENT=y]
 attributes:
   rms_voltage:
-    {id: ZCL_ATTRID_RMS_VOLTAGE, type: UINT16, c_type: u16, access: RR, channel: voltage, scale: 0.01,
+    {id: ZCL_ATTRID_RMS_VOLTAGE, type: UINT16, c_type: u16, access: RR, channel: voltage, pair: {multiplier: voltage_multiplier, divisor: voltage_divisor},
      invalid: 0xFFFF, min: 0, max: 0xFFFE, report: {min: 10s, max: 5min, change: 1}}
   rms_current:
-    {id: ZCL_ATTRID_RMS_CURRENT, type: UINT16, c_type: u16, access: RR, channel: current, scale: 0.001,
+    {id: ZCL_ATTRID_RMS_CURRENT, type: UINT16, c_type: u16, access: RR, channel: current, pair: {multiplier: current_multiplier, divisor: current_divisor},
      invalid: 0xFFFF, min: 0, max: 0xFFFE, report: {min: 10s, max: 5min, change: 0.05}}
   active_power:
-    {id: ZCL_ATTRID_ACTIVE_POWER, type: INT16, c_type: s16, access: RR, channel: power, scale: 1,
+    {id: ZCL_ATTRID_ACTIVE_POWER, type: INT16, c_type: s16, access: RR, channel: power, pair: {multiplier: power_multiplier, divisor: power_divisor},
      invalid: 0x8000, min: -32767, max: 32767, report: {min: 10s, max: 5min, change: 2}}
   voltage_multiplier: {id: ZCL_ATTRID_AC_VOLTAGE_MULTIPLIER, type: UINT16, c_type: u16, access: R, const: 1}
   voltage_divisor:    {id: ZCL_ATTRID_AC_VOLTAGE_DIVISOR, type: UINT16, c_type: u16, access: R, const: 100}

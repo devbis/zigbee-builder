@@ -205,6 +205,17 @@ status_t zbr_register_analog_input(u8 ep, u16 manu_code, u8 n_attrs, const zclAt
 				   no_commands, cb);
 }
 
+#define ZBR_CONCENTRATION(name, cluster)                                                                \
+	status_t zbr_register_##name(u8 ep, u16 manu_code, u8 n_attrs, const zclAttrInfo_t *attrs,       \
+				     cluster_forAppCb_t cb)                                             \
+	{                                                                                                \
+		return zcl_registerCluster(ep, (cluster), manu_code, n_attrs, attrs, no_commands, cb);   \
+	}
+
+ZBR_CONCENTRATION(co2, 0x040DU)
+ZBR_CONCENTRATION(pm25, 0x042AU)
+ZBR_CONCENTRATION(formaldehyde, 0x042BU)
+
 void zbr_send_cluster_cmd(u8 ep, u16 cluster, u16 manu_code, u8 cmd, const u8 *data, u16 len)
 {
 	epInfo_t dst;

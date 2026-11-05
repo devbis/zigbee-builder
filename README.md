@@ -55,6 +55,20 @@ The same image builds for the chips below (a build takes about a minute in it). 
 architecture (arm64 or amd64; the TC32 LLVM release has both, checked with its SHA-256). Checked: one build per
 chip on arm64.
 
+## Clusters: multiplier and divisor
+
+Measured attributes of Electrical Measurement and Simple Metering come with their `multiplier` and `divisor`
+attributes, which are derived: the catalog (`data/clusters`) has the defaults (voltage 1/100, current 1/1000,
+power 1/1, energy 1/1000) and a binding may override them for one quantity. The pair is read-only, it is in the
+cluster only when its value is bound, and the value's step (`multiplier / divisor` of the unit) follows it:
+
+    electrical_measurement:
+      source: meter                                  # every quantity from the meter
+      rms_current: {source: meter, multiplier: 1, divisor: 100}    # the current in 10 mA
+
+Concentration clusters the stack has no code for: `co2` (0x040D, the channel in ppm, the attribute a fraction),
+`formaldehyde` (0x042B) and `pm25` (0x042A, ug/m3).
+
 ## Chips
 | Chip | Toolchain | Status |
 |---|---|---|

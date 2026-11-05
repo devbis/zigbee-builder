@@ -624,3 +624,65 @@ def test_new_chips_stay_awake(chip):
     d["zigbee"].update(role="end_device", sleepy=True)
     with pytest.raises(ConfigError, match=f"not supported on {chip}"):
         resolve(Config.model_validate(d))
+
+
+def meter_cfg(**clusters):
+    d = yaml.safe_load((EX / "plug-bl0937.yaml").read_text())
+    for e in d["endpoints"]:
+        for k, v in clusters.items():
+            if k in e["clusters"]:
+                e["clusters"][k] = v
+    return d
+
+
+def test_pair_default_is_the_catalog_one(tmp_path):
+    render(Config.model_validate(meter_cfg()), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    assert "ZCL_ATTRID_AC_VOLTAGE_DIVISOR" in c and "ZCL_ATTRID_DIVISOR" in c
+
+
+def test_pair_override_on_the_binding(tmp_path):
+    d = meter_cfg(electrical_measurement={"source": "meter",
+                                          "rms_current": {"source": "meter", "multiplier": 1, "divisor": 100}})
+    r = resolve(Config.model_validate(d))
+    cur = next(a for ep in r["eps"] for cl in ep["clusters"] if cl["name"] == "electrical_measurement"
+               for a in cl["attrs"] if a["name"] == "rms_current")
+    div = next(a for ep in r["eps"] for cl in ep["clusters"] if cl["name"] == "electrical_measurement"
+               for a in cl["attrs"] if a["name"] == "current_divisor")
+    assert div["const"] == 100 and cur["a"]["scale"] == 0.01
+    other = next(a for ep in r["eps"] for cl in ep["clusters"] if cl["name"] == "electrical_measurement"
+                 for a in cl["attrs"] if a["name"] == "voltage_divisor")
+    assert other["const"] == 100                                    # the rest keep the catalog's
+
+
+def test_pair_is_not_bound_on_its_own():
+    d = meter_cfg(electrical_measurement={"source": "meter", "current_divisor": "meter.current"})
+    with pytest.raises(ConfigError, match="derived from"):
+        resolve(Config.model_validate(d))
+
+
+@pytest.mark.parametrize("bad,msg", [({"divisor": 0}, "positive integer"), ({"multiplier": 1.5}, "positive integer"),
+                                     ({"divisor": 70000}, "does not fit"), ({"offset": 1}, "unknown option"),
+                                     ({"multiplier": 1, "divisor": 3000}, "finer than the channel")])
+def test_pair_checks(bad, msg):
+    d = meter_cfg(electrical_measurement={"rms_current": {"source": "meter", **bad}})
+    with pytest.raises(ConfigError, match=msg):
+        resolve(Config.model_validate(d))
+
+
+def test_pair_absent_without_the_value():
+    d = meter_cfg(electrical_measurement={"rms_voltage": "meter.voltage"})    # only the voltage is bound
+    r = resolve(Config.model_validate(d))
+    names = [a["name"] for ep in r["eps"] for cl in ep["clusters"] if cl["name"] == "electrical_measurement"
+             for a in cl["attrs"]]
+    assert "voltage_divisor" in names and "current_divisor" not in names and "power_divisor" not in names
+
+
+def test_concentration_clusters(tmp_path):
+    d = yaml.safe_load((EX / "abstract-sensor.yaml").read_text())
+    d["endpoints"][0]["clusters"] = {"co2": {}, "pm25": {}, "formaldehyde": {}}
+    render(Config.model_validate(d), tmp_path, EX)
+    c = (tmp_path / "zb_device.c").read_text()
+    for fn in ("zbr_register_co2", "zbr_register_pm25", "zbr_register_formaldehyde"):
+        assert fn in c
+    assert (tmp_path / "runtime/zbr.c").read_text().count("ZBR_CONCENTRATION(") >= 3

@@ -1,0 +1,13 @@
+# PM2.5 Concentration (0x042a): MeasuredValue is a single precision number in the unit of MeasurementUnit. The stack has no code for it;
+# runtime/zbr.c registers the table. The channel is in ug/m3: the attribute is the value itself
+name: pm25
+id: 0x042a
+header: zbr.h
+register: zbr_register_pm25
+kconfig: []
+attributes:
+  measured_value:
+    {id: 0x0000, type: SINGLE_PREC, c_type: float, access: RR, channel: pm25, scale: 1, min: 0, max: 0,
+     invalid: 0x7FC00000, report: {min: 10s, max: 5min, change: 0}}
+  measurement_unit: {id: 0x0008, type: ENUM8, c_type: u8, access: R, const: 4}
+  measurement_medium: {id: 0x0009, type: ENUM8, c_type: u8, access: R, const: 0}

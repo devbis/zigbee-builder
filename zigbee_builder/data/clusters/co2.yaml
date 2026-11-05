@@ -1,0 +1,13 @@
+# Carbon Dioxide Concentration (0x040d): MeasuredValue is a single precision fraction (0..1). The stack has no code for it;
+# runtime/zbr.c registers the table. The channel is in ppm: the attribute is ppm / 1e6, as the stock Tuya CO2 sensors report it
+name: co2
+id: 0x040d
+header: zbr.h
+register: zbr_register_co2
+kconfig: []
+attributes:
+  measured_value:
+    {id: 0x0000, type: SINGLE_PREC, c_type: float, access: RR, channel: co2, scale: 1000000, min: 0, max: 0,
+     invalid: 0x7FC00000, report: {min: 10s, max: 5min, change: 0}}
+  measurement_unit: {id: 0x0008, type: ENUM8, c_type: u8, access: R, const: 0}
+  measurement_medium: {id: 0x0009, type: ENUM8, c_type: u8, access: R, const: 0}

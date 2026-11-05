@@ -50,3 +50,9 @@ pwm:
     PD2: [3]
     PD5: [0]
   template: pwm.dtsi.j2
+# UART0 to a host MCU (tuya_mcu): the pins the pinctrl driver can mux to it
+uart:
+  node: uart0
+  tx: [PA2, PB1, PC2, PD0, PD7]
+  rx: [PA0, PB0, PB7, PC3, PC5, PD6]
+  template: uart.dtsi.j2

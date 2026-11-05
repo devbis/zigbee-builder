@@ -1,0 +1,32 @@
+# Tuya CO2 sensor "_TZE200_yvx5lh6k" (model r02 of tuya_co2sensor_zrd): the module only speaks to the sensor's own
+# MCU over UART0 (9600 baud) in the Tuya serial protocol. Datapoints become channels, the clusters take the
+# channels as any sensor's. The identity (Basic) is the stock one, so the coordinator still knows the device.
+zigbee:
+  name: tuya-co2-r02
+  manufacturer: _TZE200_yvx5lh6k
+  model: TS0601
+  chip: tlsr8258
+  role: router
+  manufacturer_code: 0x1141
+  ota_image_type: 0xD3A3
+
+pins:
+  mcu_tx: PB1
+  mcu_rx: PB7
+
+components:
+  - id: air
+    type: tuya_mcu
+    uart: {tx: mcu_tx, rx: mcu_rx, baud: 9600}
+    channels:                      # datapoint -> channel, per_count: the unit of the channel per count of the DP
+      co2:         {dp: 2,  type: value, per_count: 1}      # ppm
+      temperature: {dp: 12, type: value, per_count: 0.1}    # degC
+      humidity:    {dp: 13, type: value, per_count: 0.1}    # %
+
+endpoints:
+  - id: 1
+    device: custom
+    clusters:
+      co2: {source: air.co2}
+      temperature: {source: air.temperature}
+      humidity: {source: air.humidity}

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import shutil
 from dataclasses import dataclass, field
@@ -72,6 +73,7 @@ class Ctx:
     n_store: int = 0
     customs: list[dict] = field(default_factory=list)
     lights: list[dict] = field(default_factory=list)
+    needs_serial: bool = False
 
 
 def _kind_sensor_i2c(ctx: Ctx, c, spec, bus_label):
@@ -197,6 +199,55 @@ def _kind_energy_meter(ctx: Ctx, c, spec, bus_label):
     ctx.kconfig += ["CONFIG_SENSOR=y"]
 
 
+def _kind_tuya_mcu(ctx: Ctx, c, spec, bus_label):
+    """A host MCU on a UART that speaks the Tuya serial protocol: datapoints become channels."""
+    x = c.model_extra
+    uart = x.get("uart")
+    hw = ctx.chip.d.get("uart")
+    if hw is None:
+        raise ConfigError(f"component '{c.id}': chip {ctx.chip.name} has no UART description for tuya_mcu")
+    if not isinstance(uart, dict) or "tx" not in uart or "rx" not in uart:
+        raise ConfigError(f"component '{c.id}': uart: {{tx: <pin>, rx: <pin>, baud: 9600}} is required")
+    tx, rx = ctx.gpio(uart["tx"])[0], ctx.gpio(uart["rx"])[0]
+    for role, p in (("tx", tx), ("rx", rx)):
+        if p.name not in hw[role]:
+            raise ConfigError(f"component '{c.id}': {p.name} cannot be the UART {role.upper()} of {ctx.chip.name}; "
+                              f"{role.upper()} pins: {', '.join(hw[role])}")
+    baud = int(uart.get("baud", 9600))
+    ctx.overlay.append(jinja2.Template((ctx.chip.dir / hw["template"]).read_text()).render(
+        tx=tx.name, rx=rx.name, baud=baud))
+    dp_list, seen = [], {}
+    for name, ch in (x.get("channels") or {}).items():
+        if not isinstance(ch, dict) or "dp" not in ch:
+            raise ConfigError(f"component '{c.id}': channel '{name}' needs dp:")
+        dp = int(ch["dp"])
+        if not 0 <= dp <= 255:
+            raise ConfigError(f"component '{c.id}': channel '{name}': dp {dp} is not 0..255")
+        if dp in seen:
+            raise ConfigError(f"component '{c.id}': dp {dp} is on '{seen[dp]}' and '{name}'")
+        seen[dp] = name
+        typ = ch.get("type", "value")
+        if typ not in DP_TYPES:
+            raise ConfigError(f"component '{c.id}': channel '{name}': type '{typ}' is none of "
+                              f"{', '.join(DP_TYPES)}")
+        r = _ratio(c.id, f"{name}.per_count", ch.get("per_count", 1))
+        g = math.gcd(1000 * r.numerator, r.denominator)       # the channel is in milli-units
+        num, den = 1000 * r.numerator // g, r.denominator // g
+        if num * den >= 2 ** 31:                              # the 32-bit conversion of the generated code
+            raise ConfigError(f"component '{c.id}': channel '{name}': per_count {ch.get('per_count')} "
+                              f"does not fit the 32-bit conversion")
+        dp_list.append({"name": name, "dp": dp, "type": DP_TYPES[typ], "num": num, "den": den})
+    if not dp_list:
+        raise ConfigError(f"component '{c.id}': channels: is empty")
+    ctx.comps[c.id] = {
+        "id": ident(c.id), "kind": "tuya_mcu", "uart_node": hw["node"], "dps": dp_list,
+        "chans": {d["name"]: None for d in dp_list}, "chan_valid": True,
+        "includes": ["<iot_drivers/tuya_mcu.h>", "<iot_drivers/tuya_uart.h>"],
+    }
+    ctx.kconfig += ["CONFIG_SERIAL=y", "CONFIG_IOTDRV_TUYA_MCU=y", "CONFIG_IOTDRV_TUYA_UART=y"]
+    ctx.needs_serial = True
+
+
 LIGHT_CHANNELS = ("red", "green", "blue", "warm", "cool")
 
 
@@ -246,7 +297,8 @@ def _kind_pwm_light(ctx: Ctx, c, spec, bus_label):
 
 KINDS = {"pwm_light": _kind_pwm_light, "sensor_i2c": _kind_sensor_i2c, "battery_adc": _kind_battery_adc,
          "binary_input": _kind_binary_input, "relay": _kind_relay,
-         "energy_meter": _kind_energy_meter}
+         "energy_meter": _kind_energy_meter, "tuya_mcu": _kind_tuya_mcu}
+DP_TYPES = {"value": "IOTDRV_TUYA_DP_VALUE", "bool": "IOTDRV_TUYA_DP_BOOL", "enum": "IOTDRV_TUYA_DP_ENUM"}
 
 
 def _type_specs() -> dict:
@@ -257,6 +309,7 @@ def _type_specs() -> dict:
     specs["binary_input"] = {"kind": "binary_input"}
     specs["relay"] = {"kind": "relay"}
     specs["pwm_light"] = {"kind": "pwm_light"}
+    specs["tuya_mcu"] = {"kind": "tuya_mcu"}
     return specs
 
 
@@ -753,7 +806,8 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
         if r["sleepy"]:
             kconfig += sleep["retained_kconfig"]
     if not z.debug:
-        kconfig += ["CONFIG_SERIAL=n", "CONFIG_CONSOLE=n", "CONFIG_UART_CONSOLE=n"]
+        kconfig += (["CONFIG_CONSOLE=n", "CONFIG_UART_CONSOLE=n"] if ctx.needs_serial
+                    else ["CONFIG_SERIAL=n", "CONFIG_CONSOLE=n", "CONFIG_UART_CONSOLE=n"])
     kconfig = [k if k.startswith("CONFIG_") else "CONFIG_" + k for k in kconfig]
 
     ota_type = z.ota_image_type

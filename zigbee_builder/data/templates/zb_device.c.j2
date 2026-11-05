@@ -190,6 +190,58 @@ static bool {{ c.id }}_read(void)
 	}
 	return true;
 }
+{% elif c.kind == 'tuya_mcu' %}
+static struct iotdrv_tuya_mcu {{ c.id }}_mcu;
+{% for d in c.dps %}
+/* datapoint {{ d.dp }}: milli-units of the channel, written by the MCU's session on the work queue */
+static volatile int32_t {{ c.id }}_{{ d.name }};
+static volatile bool {{ c.id }}_{{ d.name }}_valid;
+{% endfor %}
+static bool {{ c.id }}_joined;
+
+static void {{ c.id }}_on_dp(struct iotdrv_tuya_mcu *m, const struct iotdrv_tuya_dp *dp, void *user)
+{
+	(void)m;
+	(void)user;
+	switch (dp->id) {
+{% for d in c.dps %}
+	case {{ d.dp }}:
+		if (dp->type == {{ d.type }}) {
+			{{ c.id }}_{{ d.name }} = zbr_dp_scale((int32_t)iotdrv_tuya_dp_u32(dp), {{ d.num }}, {{ d.den }});
+			{{ c.id }}_{{ d.name }}_valid = true;
+		}
+		break;
+{% endfor %}
+	default:
+		break;
+	}
+}
+
+/* The MCU answered the handshake: ask for everything it has, it reports only what changes */
+static void {{ c.id }}_on_ready(struct iotdrv_tuya_mcu *m, const char *product, void *user)
+{
+	(void)product;
+	(void)user;
+	(void)iotdrv_tuya_mcu_query_dps(m);
+}
+
+static struct iotdrv_tuya_listener {{ c.id }}_listener = {
+	.on_ready = {{ c.id }}_on_ready,
+	.on_dp = {{ c.id }}_on_dp,
+};
+
+/* The network state goes to the MCU (its display shows it); the values arrive by themselves */
+static bool {{ c.id }}_read(void)
+{
+	bool joined = zb_isDeviceJoinedNwk();
+
+	if (joined != {{ c.id }}_joined) {
+		{{ c.id }}_joined = joined;
+		(void)iotdrv_tuya_mcu_set_net_status(&{{ c.id }}_mcu, joined ? IOTDRV_TUYA_NET_JOINED
+									   : IOTDRV_TUYA_NET_NOT_JOINED);
+	}
+	return true;
+}
 {% endif %}
 
 {% endfor %}
@@ -460,7 +512,7 @@ static void measure(void)
 {% endfor %}
 
 {% for b in bindings %}
-	if (ok_{{ ident(b.comp) }}) {
+	if (ok_{{ ident(b.comp) }}{% if comps[b.comp].chan_valid is defined %} && {{ ident(b.comp) }}_{{ b.chan }}_valid{% endif %}) {
 {% if b.attr.a.c_type == 'float' %}
 		u32 v = zbr_float_bits({{ ident(b.comp) }}_{{ b.chan }}, {{ b.div }}U);
 {% else %}
@@ -584,6 +636,13 @@ void app_device_register(void)
 {% endfor %}
 {% for c in comps.values() if c.kind == 'energy_meter' %}
 	{{ c.id }}_restore();
+{% endfor %}
+{% for c in comps.values() if c.kind == 'tuya_mcu' %}
+	iotdrv_tuya_mcu_init(&{{ c.id }}_mcu, 0U);
+	iotdrv_tuya_mcu_add_listener(&{{ c.id }}_mcu, &{{ c.id }}_listener);
+	if (iotdrv_tuya_uart_bind(DEVICE_DT_GET(DT_NODELABEL({{ c.uart_node }})), &{{ c.id }}_mcu) == 0) {
+		(void)iotdrv_tuya_mcu_start(&{{ c.id }}_mcu);
+	}
 {% endfor %}
 {% for c in comps.values() if c.kind == 'pwm_light' %}
 	{{ c.id }}_light.ep = {{ c.ep }};

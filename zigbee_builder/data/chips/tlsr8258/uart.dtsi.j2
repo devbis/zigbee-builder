@@ -1,0 +1,20 @@
+&pinctrl {
+	uart0_tx_zbr: uart0_tx_zbr {
+		pinmux = <TLSR8258_PINMUX(TLSR8258_GPIO_{{ tx }}, TLSR8258_FUNC_UART)>;
+		output-enable;
+	};
+
+	uart0_rx_zbr: uart0_rx_zbr {
+		pinmux = <TLSR8258_PINMUX(TLSR8258_GPIO_{{ rx }}, TLSR8258_FUNC_UART)>;
+		bias-pull-up;
+		input-enable;
+	};
+};
+
+&uart0 {
+	status = "okay";
+	current-speed = <{{ baud }}>;
+	tx-pin = <TLSR8258_GPIO_{{ tx }}>;
+	rx-pin = <TLSR8258_GPIO_{{ rx }}>;
+	pinctrl-0 = <&uart0_tx_zbr &uart0_rx_zbr>;
+};

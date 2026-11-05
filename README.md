@@ -52,6 +52,19 @@ network (the stack refuses it), which needs a change in the Zephyr fork.
   previous` or `on` on its endpoint is an error). For a door strike, a gate, a bell. See
   `examples/intercom-line.yaml`.
 
+## C plugins: components, events and timers
+
+A project with `plugins:` gets, in the generated `zb_user.h` (from the component ids of the YAML; everything runs on
+the Zigbee thread, where attributes may be set):
+
+    void zb_relay_<id>_set(bool on);  bool zb_relay_<id>_get(void);     // a relay: its OnOff attribute and pulse follow
+    void zb_input_<id>_on_change(bool active);  bool zb_input_<id>_get(void);   // implement it to react to an input
+    int  zb_after(uint32_t ms, void (*fn)(void *), void *arg);  bool zb_cancel(int handle);   // one-shot timers
+
+`zb_input_<id>_on_change` is called after the debounce and the release delay. `zb_after` takes up to eight timers
+at a time (-1 when all are used); a handle that has fired is refused by `zb_cancel`. See `examples/intercom-auto.yaml`
+with `examples/plugins/auto_open.c`: on a call it mutes the speaker and opens the door a second later.
+
 ## Docker
 
 The image has everything the builds need (the Zephyr fork and its modules, MCUboot, the TC32 LLVM from the fork's

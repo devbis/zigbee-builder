@@ -1,0 +1,43 @@
+# The hardware side of an apartment intercom tap (a call detector, the door strike, the handset's speaker relay):
+# the call line stays "active" for 4 s after the pin is released (release_delay: a call is a pulsing signal, one
+# call is one activation), the door opens by a 600 ms pulse (pulse: on turns itself off, the attribute follows).
+# + a plugin (plugins/auto_open.c): on a call it mutes the speaker and opens the door after a second.
+zigbee:
+  name: intercom-auto
+  manufacturer: DEVBIS
+  model: INTERCOM-AUTO
+  chip: tlsr8258
+  role: router
+  ota_image_type: 0x5C02
+
+pins:
+  detect: {pin: PA4, pull: up, inverted: true}
+  mute_line: PB4
+  open_door: PB5
+  button: {pin: PC0, pull: up, inverted: true}
+  led: {pin: PB1, inverted: true}
+
+button: button
+status_led: led
+
+plugins: [plugins/auto_open.c]
+
+components:
+  - {id: line, type: binary_input, pin: detect, debounce: 100ms, release_delay: 4s}
+  - {id: mute, type: relay, pin: mute_line}
+  - {id: door, type: relay, pin: open_door, pulse: 600ms}
+
+endpoints:
+  - id: 1
+    device: custom
+    clusters:
+      binary_input: {source: line}
+  - id: 2
+    device: on_off_output
+    clusters:
+      groups:
+      on_off: {source: mute}
+  - id: 3
+    device: on_off_output
+    clusters:
+      on_off: {source: door}

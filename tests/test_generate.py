@@ -1,3 +1,4 @@
+import json
 import copy
 from pathlib import Path
 
@@ -547,3 +548,79 @@ def test_meter_without_scales_keeps_the_resistors(tmp_path):
 def test_meter_scale_must_be_a_positive_number(tmp_path, bad):
     with pytest.raises(ConfigError, match="voltage_v_per_hz"):
         meter_overlay(tmp_path, voltage_v_per_hz=bad)
+
+
+def board(chip, name="plug-relay"):
+    return load(str(EX / f"{name}.yaml"), str(EX / "boards" / chip / f"{name}.yaml"))
+
+
+def test_esp32c6(tmp_path):
+    cfg = board("esp32c6")
+    assert cfg.zigbee.chip == "esp32c6"
+    render(cfg, tmp_path, EX)
+    ov = (tmp_path / "esp32c6_devkitc_esp32c6_hpcore.overlay").read_text()
+    assert "esp32c6-pinctrl.h" in ov and "&gpio0 10" in ov and "DT_SIZE_M(4)" in ov
+    assert "CONFIG_ZIGBEE_OTA=y" in (tmp_path / "prj.conf").read_text()
+    d = cfg.model_dump()
+    d["pins"]["relay"] = "GPIO24"                                      # an SPI flash pin
+    with pytest.raises(ConfigError, match="reserved"):
+        resolve(Config.model_validate(d))
+    d["pins"]["relay"] = "GPIO30"
+    with pytest.raises(ConfigError, match="does not exist on esp32c6"):
+        resolve(Config.model_validate(d))
+
+
+def test_bl702(tmp_path):
+    render(board("bl702"), tmp_path, EX)
+    conf = (tmp_path / "prj.conf").read_text()
+    assert "CONFIG_ZIGBEE_OTA=y" in conf and 'CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION="0.1.0"' in conf
+    ov = (tmp_path / "dt_xt_zb1_devkit.overlay").read_text()
+    assert "&gpio0 3" in ov and "slot0_partition: partition@20000" in ov
+    info = json.loads((tmp_path / "build_info.json").read_text())
+    assert info["build"]["driver"] == "sysbuild" and info["ota"]
+    assert info["flash"]["boot_header"] == "tool"
+
+
+def test_bl702_i2c(tmp_path):
+    d = yaml.safe_load((EX / "temp-humidity-sht30.yaml").read_text())
+    d["zigbee"].update(chip="bl702", sleepy=False)
+    d["components"] = [c for c in d["components"] if c["type"] != "battery_adc"]     # no battery ADC yet
+    for e in d["endpoints"]:
+        e["clusters"].pop("power_config", None)
+    d["pins"] = {"sda": "GPIO1", "scl": "GPIO0", "button": {"pin": "GPIO10", "pull": "up", "inverted": True},
+                 "led": "GPIO11"}
+    render(Config.model_validate(d), tmp_path, EX)
+    ov = (tmp_path / "dt_xt_zb1_devkit.overlay").read_text()
+    assert "GPIO0_I2C_SCL" in ov and "GPIO1_I2C_SDA" in ov
+    d["pins"]["sda"], d["pins"]["scl"] = "GPIO3", "GPIO4"             # not a hardware pair: bit-banged
+    render(Config.model_validate(d), tmp_path, EX)
+    assert "gpio-i2c" in (tmp_path / "dt_xt_zb1_devkit.overlay").read_text()
+
+
+def test_phy6252(tmp_path):
+    render(board("phy6252"), tmp_path, EX)
+    ov = (tmp_path / "pb_03f.overlay").read_text()
+    assert "&gpio0 2 " in ov and "&gpio0 7 " in ov                    # P2 is index 2, P11 is index 7
+    info = json.loads((tmp_path / "build_info.json").read_text())
+    assert info["build"]["driver"] == "sysbuild" and info["build"]["loader_image"] == "zephyr.phy6252.bin"
+    assert "SB_CONFIG_MCUBOOT_MODE_SINGLE_APP=y" in info["build"]["sb_config"]
+    assert info["toolchain"] == "gnuarmemb" and not info["ota"]        # one slot: no OTA file
+    assert "slot0_partition: partition@10000" in ov and "DT_SIZE" not in ov
+
+
+def test_phy6252_pins():
+    d = board("phy6252").model_dump()
+    d["pins"]["relay"] = "P9"                                          # the console
+    with pytest.raises(ConfigError, match="reserved"):
+        resolve(Config.model_validate(d))
+    d["pins"]["relay"] = "P4"                                          # not a pad of the chip
+    with pytest.raises(ConfigError, match="does not exist on phy6252"):
+        resolve(Config.model_validate(d))
+
+
+@pytest.mark.parametrize("chip", ["esp32c6", "bl702", "phy6252"])
+def test_new_chips_stay_awake(chip):
+    d = board(chip).model_dump()
+    d["zigbee"].update(role="end_device", sleepy=True)
+    with pytest.raises(ConfigError, match=f"not supported on {chip}"):
+        resolve(Config.model_validate(d))

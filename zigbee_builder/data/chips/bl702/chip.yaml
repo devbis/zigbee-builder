@@ -1,0 +1,33 @@
+name: bl702
+board: dt_xt_zb1_devkit            # XT-ZB1 module (BL702C10) on its development kit
+toolchain: zephyr_sdk              # Zephyr SDK (riscv64-zephyr-elf)
+# MCUboot through sysbuild: the loader at flash 0x2000 (the boot ROM reads the boot header at 0, which the
+# flashing tool writes for the loader), the application signed for slot 0. The builder does not make the
+# boot header, so there is no full image: see "flash" below.
+build: {driver: sysbuild}
+roles: [router, end_device]
+# The fork has a hibernate deep sleep for it (CONFIG_ZIGBEE_SLEEPY_DEEP, a retained RAM), which this pack
+# does not describe yet: an end device stays awake.
+sleep: null
+# OTA through MCUboot: slot 1 takes the image, MCUboot copies it into slot 0 (overwrite-only)
+ota: true
+snippet: null
+pins:
+  format: gpio_number
+  node: gpio0
+  max: 31
+  # GPIO7 and 8 are USB; GPIO23..28 are the SPI flash pads of the module
+  reserved: [7, 8, 23, 24, 25, 26, 27, 28]
+wake: none
+# the hardware I2C0 on the pairs the pinctrl header has the functions for; any other pair is bit-banged
+i2c_hw:
+  - {sda: GPIO1, scl: GPIO0, template: i2c_hw.dtsi.j2}
+  - {sda: GPIO1, scl: GPIO2, template: i2c_hw.dtsi.j2}
+  - {sda: GPIO9, scl: GPIO8, template: i2c_hw.dtsi.j2}
+  - {sda: GPIO15, scl: GPIO14, template: i2c_hw.dtsi.j2}
+led0_node: false                   # the devkit has no gpio-leds node: the overlay makes one
+kconfig_all: []
+# boot header 0..0x2000 (the tool), MCUboot at 0x2000 (0x1E000), slot 0 at 0x20000 (0x68000), slot 1 at 0x88000,
+# the NV storage at 0xF8000. No "full image": the loader is flashed with bflb_mcu_tool (it adds the boot header),
+# the signed image is written at slot_offset.
+flash: {loader_offset: 0x2000, loader_end: 0x20000, slot_offset: 0x20000, slot_size: 0x68000, boot_header: tool}

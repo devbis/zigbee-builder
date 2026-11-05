@@ -1,0 +1,6 @@
+# The pins of examples/plug-relay.yaml on a PB-03F (PHY6252): for tests and checks. Pads are named as on the chip.
+chip: phy6252
+pins:
+  relay: P2
+  button: {pin: P3, pull: up, inverted: true}
+  led: {pin: P11, inverted: true}

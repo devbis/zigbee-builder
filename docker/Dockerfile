@@ -66,7 +66,7 @@ RUN cd /opt/ws/bootloader/mcuboot && git fetch -q --depth 1 "$MCUBOOT_REPO" "$MC
 # west's own needs (blobs fetching), then those of Zephyr's scripts and of imgtool
 RUN pip install --no-cache-dir -r /opt/ws/zephyr/scripts/requirements-base.txt \
     && pip install --no-cache-dir -r /opt/ws/bootloader/mcuboot/scripts/requirements.txt
-RUN cd /opt/ws && west blobs fetch hal_espressif
+RUN cd /opt/ws && west blobs fetch hal_espressif hal_bouffalolab
 
 # Drivers of the devices (energy meters, displays ...): a Zephyr module the builds add on their own
 RUN git init -q /opt/ws/zephyr-iot-drivers && cd /opt/ws/zephyr-iot-drivers && git remote add origin "$IOT_DRIVERS_REPO" \

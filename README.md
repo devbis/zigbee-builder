@@ -51,7 +51,7 @@ is built. The revisions are in `docker/pins.env`.
     docker run --rm -v "$PWD":/work zigbee-builder build examples/plug-relay.yaml \
         --board examples/boards/nrf52840/plug-relay.yaml -o build
 
-The same image builds for the three chips (a build takes about a minute in it). It is built for the machine's
+The same image builds for the chips below (a build takes about a minute in it). It is built for the machine's
 architecture (arm64 or amd64; the TC32 LLVM release has both, checked with its SHA-256). Checked: one build per
 chip on arm64.
 
@@ -61,12 +61,19 @@ chip on arm64.
 | `tlsr8258` | TC32 LLVM (`LLVM_TOOLCHAIN_PATH`) | everything; MCUboot loader, OTA, sleepy end device |
 | `nrf52840` | GNU Arm Embedded (`GNUARMEMB_TOOLCHAIN_PATH`, default: where `arm-none-eabi-gcc` is) | everything except sleep: sensors (I2C, SAADC on VDD), IAS, plugs and relays, switch, light (4 PWM channels), custom cluster; MCUboot, signed image, OTA file; no sleepy |
 | `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake end device: relays, plugs, custom clusters; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet |
+| `esp32c6` | Zephyr SDK | as the ESP32-H2: router and awake end device; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet. Board: ESP32-C6-DevKitC (HP core) |
+| `bl702` | Zephyr SDK | router and awake end device: relays, plugs, sensors on I2C (hardware on GPIO0/1, 1/2, 8/9, 14/15, else bit-banged); **MCUboot**, signed image, OTA file (slot 0 at 0x20000, slot 1 at 0x88000, 0x68000 each); no full image: the boot ROM's header is written by the flashing tool (`bflb_mcu_tool` for `*-loader.bin`, then the signed image at 0x20000); needs the BL702 board of MCUboot (`modern-tc32/mcuboot`, branch `tc32-port`, pinned in `docker/pins.env`); **built, not run on hardware**; no sleepy yet; no ADC battery, no PWM yet. Board: XT-ZB1 (BL702C10) |
+| `phy6252` | GNU Arm Embedded, or the ARM toolchain of the Zephyr SDK | the Ai-Thinker **PB-03F**: router and awake end device, bit-banged I2C; **MCUboot with one slot**: the loader image (`zephyr.phy6252.bin`, ROM table at 0x2000, code XIP at 0x11002400, 32 KB) and the application signed for slot 0 at 0x10000; the full image is flashed at 0x2000 (`rdwr_phy62x2.py`), later the application is replaced through the loader's serial recovery (mcumgr on UART0, P9/P10). **No OTA file**: the XIP window of the chip is 127 KB and the image fills it, so there is no room for slot 1. Needs the PB-03F board of MCUboot and the SoC image script of the Zephyr fork (see below). The fork's driver is experimental, **built, not run on hardware**; the flash is nearly full (a plug router: 99 %); no sleepy, no ADC battery, no PWM |
 
 nRF52840: pins are `P0.13` (port 0, pin 13; `P0.09`, `P0.10` NFC and `P0.18` reset are reserved), the battery is the
 supply itself (SAADC on VDD), a light has four PWM channels. Flash: MCUboot at 0, slot 0 at 0xC000, slot 1 at 0x82000.
 The boards of the examples are in `examples/boards/nrf52840` (an nRF52840-DK).
 
-Sleep, on both: the stack has no light sleep, and its deep sleep needs a retained memory the board does not
+Pin names: ESP32-C6 and BL702 `GPIO10` (reserved: C6 GPIO12/13 USB and 24..29 flash; BL702 GPIO7/8 USB and 23..28 flash);
+PB-03F the pad as on the chip, `P2`, `P11` (the console P9/P10, the crystal P16/P17 and P1, P25..P27 are reserved).
+The boards of the examples are in `examples/boards/{esp32c6,bl702,phy6252}`.
+
+Sleep, on the nRF52840, ESP32-H2 and ESP32-C6, and on the BL702 and PHY6252 for now: the stack has no light sleep, and its deep sleep needs a retained memory the board does not
 describe, so `sleepy: true` is an error there. OTA works through `west build --sysbuild` (MCUboot and the application
 signed for slot 0, with the development key of the Zephyr MCUboot); it needs the `tf-psa-crypto` and
 `tf-psa-crypto-drivers` modules (`west update tf-psa-crypto tf-psa-crypto-drivers` in the Zephyr workspace). The full

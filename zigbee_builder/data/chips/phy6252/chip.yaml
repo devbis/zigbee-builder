@@ -1,0 +1,28 @@
+name: phy6252
+board: pb_03f                      # Ai-Thinker PB-03F (Phyplus PHY6252, Cortex-M0, 256 KB flash, 64 KB RAM)
+toolchain: gnuarmemb               # GNU Arm Embedded (arm-none-eabi-gcc), or the ARM toolchain of the Zephyr SDK
+# MCUboot through sysbuild: the loader (table of the boot ROM at flash 0x2000, code XIP at 0x11002400) and the
+# application signed for slot 0 at 0x10000. ONE slot: the XIP window is 127 KB, there is no room for a
+# second one, so no OTA file: the application is replaced through the loader's serial recovery.
+build: {driver: sysbuild, loader_image: zephyr.phy6252.bin, sb_config: [SB_CONFIG_MCUBOOT_MODE_SINGLE_APP=y]}
+roles: [router, end_device]
+sleep: null                        # the stack has no sleep on this chip: an end device stays awake
+ota: false                         # no slot 1: the .zigbee file would have nowhere to go
+snippet: null
+pins:
+  # Pads are named as on the chip (P7), the GPIO controller of the board counts them by index (the list order)
+  format: pad_list
+  node: gpio0
+  pads: [0, 1, 2, 3, 7, 9, 10, 11, 14, 15, 16, 17, 18, 20, 23, 24, 25, 26, 27, 31, 32, 33, 34]
+  # the board description reserves the indices 1, 5-6 (the console P9 and P10), 10-11 (the crystal P16
+  # and P17) and 16-18 (P25..P27)
+  reserved: [1, 9, 10, 16, 17, 25, 26, 27]
+wake: none
+# no hardware I2C in the fork: the bus is bit-banged on any two pins
+i2c_hw: []
+led0_node: false                   # the board has no gpio-leds node: the overlay makes one
+# the fork builds the router of this chip with logging off; this is the end device's default too
+kconfig_all: [CONFIG_LOG=n]
+# loader image from 0x2000 (its table, then the code to 0x10000); slot 0 at 0x10000, 0x20000 long (the MCUboot
+# header 0x200 and the application). The full image starts at 0x2000.
+flash: {loader_offset: 0x2000, loader_end: 0x10000, slot_offset: 0x10000, slot_size: 0x20000}

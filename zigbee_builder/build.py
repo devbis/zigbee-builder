@@ -84,10 +84,14 @@ def build(project: Path, out: Path, env_file: Path | None) -> list[Path]:
     return package(project, app, loader / "zephyr/zephyr.bin", env)
 
 
+def _variant(info: dict, env: dict) -> str:
+    return "gnuarmemb" if info["toolchain"] == "gnuarmemb" and not env.get("ZBR_USE_SDK_ARM") else "zephyr"
+
+
 def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> list[Path]:
-    """One west build with the Zephyr SDK: the image is flashed as it is (ESP: at offset 0)."""
+    """One west build: the image is flashed as it is, at the offset the chip pack names."""
     zb = env["ZEPHYR_BASE"]
-    env["ZEPHYR_TOOLCHAIN_VARIANT"] = "zephyr"
+    env["ZEPHYR_TOOLCHAIN_VARIANT"] = _variant(info, env)
     app = out / info["name"]
     subprocess.run(
         [west, "build", "-p", "always", "-b", info["board"], "-d", str(app), str(project), "--",
@@ -95,7 +99,7 @@ def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> 
          f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
         cwd=zb, env=env, check=True)
     full = app / f"{info['name']}-{info['version']}-full.bin"
-    full.write_bytes((app / "zephyr/zephyr.bin").read_bytes())
+    full.write_bytes((app / "zephyr" / info["build"].get("image", "zephyr.bin")).read_bytes())
     print(f"{full.name}: {full.stat().st_size} bytes, flash at {info['flash']['full_image_offset']:#x}"
           f"{'' if info['ota'] else ' (no OTA on this chip yet)'}")
     return [full]
@@ -104,16 +108,16 @@ def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> 
 def _build_sysbuild(project: Path, out: Path, info: dict, env: dict, west: str) -> list[Path]:
     """One west build --sysbuild with the Zephyr SDK: MCUboot and the signed application image.
     The full image is the loader, padded to the slot, and the signed image."""
-    env["ZEPHYR_TOOLCHAIN_VARIANT"] = ("gnuarmemb" if info["toolchain"] == "gnuarmemb" and not env.get("ZBR_USE_SDK_ARM")
-                                        else "zephyr")
+    env["ZEPHYR_TOOLCHAIN_VARIANT"] = _variant(info, env)
     build = out / info["name"]
     subprocess.run(
         [west, "build", "--sysbuild", "-p", "always", "-b", info["board"], "-d", str(build), str(project), "--",
-         "-DSB_CONFIG_BOOTLOADER_MCUBOOT=y", f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
+         "-DSB_CONFIG_BOOTLOADER_MCUBOOT=y", *[f"-D{c}" for c in info["build"].get("sb_config", [])],
+         f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
          f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
         cwd=env["ZEPHYR_BASE"], env=env, check=True)
     app = build / project.name                       # sysbuild names the application by its directory
-    return _package(info, app, build / "mcuboot/zephyr/zephyr.bin", app / "zephyr/zephyr.signed.bin", env)
+    return _package(info, app, build / "mcuboot/zephyr" / info["build"].get("loader_image", "zephyr.bin"), app / "zephyr/zephyr.signed.bin", env)
 
 
 def _package(info: dict, app: Path, loader_bin: Path, signed: Path, env: dict) -> list[Path]:
@@ -121,24 +125,34 @@ def _package(info: dict, app: Path, loader_bin: Path, signed: Path, env: dict) -
     fl = info["flash"]
     python = env.get("PYTHON") or sys.executable
     ota_pack = Path(env["ZEPHYR_BASE"]) / "scripts/zigbee_ota_pack.py"
-    oi = dict(l.split("=", 1) for l in (app / "ota_info.txt").read_text().split() if "=" in l)
-    manufacturer = _kconfig((app / "zephyr/.config").read_text(), "CONFIG_ZIGBEE_MANUFACTURER_CODE")
     stem = app.parent / f"{info['name']}-{info['version']}"
     ota, full, sig = Path(f"{stem}.zigbee"), Path(f"{stem}-full.bin"), Path(f"{stem}-signed.bin")
     sig.write_bytes(signed.read_bytes())
-    subprocess.run([python, str(ota_pack), str(sig), str(ota), "--manufacturer", hex(manufacturer),
-                    "--image-type", hex(int(oi["image_type"], 0)), "--file-version",
-                    hex(int(oi["file_version"], 0)), "--header-string", info["name"][:32]], check=True)
+    if info["ota"]:
+        oi = dict(l.split("=", 1) for l in (app / "ota_info.txt").read_text().split() if "=" in l)
+        manufacturer = _kconfig((app / "zephyr/.config").read_text(), "CONFIG_ZIGBEE_MANUFACTURER_CODE")
+        subprocess.run([python, str(ota_pack), str(sig), str(ota), "--manufacturer", hex(manufacturer),
+                        "--image-type", hex(int(oi["image_type"], 0)), "--file-version",
+                        hex(int(oi["file_version"], 0)), "--header-string", info["name"][:32]], check=True)
     boot = loader_bin.read_bytes()
-    if len(boot) > fl["loader_end"]:
+    start = fl.get("loader_offset", 0)
+    if start + len(boot) > fl["loader_end"]:
         raise ConfigError(f"loader is {len(boot):#x} bytes, its partition ends at {fl['loader_end']:#x}")
     image = sig.read_bytes()
     if len(image) > fl["slot_size"]:
         raise ConfigError(f"image is {len(image):#x} bytes, slot 0 holds {fl['slot_size']:#x}")
-    full.write_bytes(boot.ljust(fl["loader_end"], b"\xff") + image)
+    if fl.get("boot_header") == "tool":
+        # the boot ROM's header comes from the flashing tool: the loader and the image go in separately
+        loader = Path(f"{stem}-loader.bin")
+        loader.write_bytes(boot)
+        print(f"{sig.name}: {len(image)} bytes (slot {fl['slot_size']:#x}), flash at {fl['slot_offset']:#x}")
+        print(f"{loader.name}: {len(boot)} bytes, flash with bflb_mcu_tool (it adds the boot header, at "
+              f"{start:#x}); no full image")
+        return [sig, loader] + ([ota] if info["ota"] else [])
+    full.write_bytes(boot.ljust(fl["loader_end"] - start, b"\xff") + image)
     print(f"{sig.name}: {len(image)} bytes (slot {fl['slot_size']:#x})")
-    print(f"{full.name}: loader {len(boot)} + image {len(image)} bytes, flash at 0x0")
-    return [sig, ota, full]
+    print(f"{full.name}: loader {len(boot)} + image {len(image)} bytes, flash at {start:#x}")
+    return [sig, full] + ([ota] if info["ota"] else [])
 
 
 def _kconfig(text: str, name: str) -> int:

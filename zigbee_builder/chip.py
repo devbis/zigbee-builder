@@ -49,6 +49,17 @@ class Chip:
                 raise ConfigError(f"pin '{name}' is reserved on {self.name} (flash or USB); "
                                   f"reserved: {', '.join('GPIO%d' % n for n in fmt['reserved'])}")
             return Pin(m.group(0), fmt["node"], int(m.group(1)))
+        if fmt["format"] == "pad_list":
+            # the pads are named as on the chip, the controller counts them by their place in the list
+            m = re.fullmatch(r"P(\d+)", str(name).upper())
+            pads = fmt["pads"]
+            if not m or int(m.group(1)) not in pads:
+                raise ConfigError(f"pin '{name}' does not exist on {self.name} "
+                                  f"({', '.join('P%d' % n for n in pads)})")
+            if int(m.group(1)) in fmt.get("reserved", []):
+                raise ConfigError(f"pin '{name}' is reserved on {self.name} (console, crystal or not bonded out); "
+                                  f"reserved: {', '.join('P%d' % n for n in fmt['reserved'])}")
+            return Pin(m.group(0), fmt["node"], pads.index(int(m.group(1))))
         if fmt["format"] == "port_dot":
             m = re.fullmatch(r"P(\d+)\.(\d+)", str(name).upper())
             ports = {int(k): v for k, v in fmt["ports"].items()}

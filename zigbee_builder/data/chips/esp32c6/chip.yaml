@@ -1,0 +1,26 @@
+name: esp32c6
+board: esp32c6_devkitc/esp32c6/hpcore   # the high-performance core of the DevKitC-1, as west takes it
+toolchain: zephyr_sdk              # Zephyr SDK (riscv64-zephyr-elf), not the TC32 LLVM
+build: {driver: sysbuild}          # one west build --sysbuild: MCUboot, and the app signed for slot 0
+roles: [router, end_device]
+# No sleepy end device, as on the H2: the stack has no light sleep, and the deep sleep needs retained
+# memory the board does not describe (sleep: null). An end device stays awake.
+sleep: null
+# OTA through MCUboot: slot 1 takes the image, MCUboot swaps it in. Needs the tf-psa-crypto modules.
+ota: true
+snippet: null
+pins:
+  format: gpio_number
+  node: gpio0
+  max: 29
+  # GPIO12 and 13 are the USB serial/JTAG pins, GPIO24..29 the SPI flash; 4, 5, 8, 9 and 15 are
+  # strapping pins (9 is the board's BOOT button)
+  reserved: [12, 13, 24, 25, 26, 27, 28, 29]
+wake: none
+# any pin pair is a hardware I2C
+i2c_hw: {any: {template: i2c_hw.dtsi.j2}}
+led0_node: false                   # the devkit has no gpio-leds node: the overlay makes one
+# the radio's calibration needs a deeper main stack than the sample's default (the fork's sample sets it too)
+kconfig_all: [CONFIG_MAIN_STACK_SIZE=2048]
+# the same 4 MB map as the H2: MCUboot at 0, slot 0 at 0x20000 (1792K)
+flash: {loader_end: 0x20000, slot_size: 0x1C0000}

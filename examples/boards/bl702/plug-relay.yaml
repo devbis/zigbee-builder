@@ -1,0 +1,6 @@
+# The pins of examples/plug-relay.yaml on a BL702 (XT-ZB1 module, its development kit): for tests and checks.
+chip: bl702
+pins:
+  relay: GPIO3
+  button: {pin: GPIO4, pull: up, inverted: true}
+  led: {pin: GPIO5, inverted: true}

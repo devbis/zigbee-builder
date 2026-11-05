@@ -1,0 +1,6 @@
+# The pins of examples/plug-relay.yaml on an ESP32-C6 devkit (for tests and checks).
+chip: esp32c6
+pins:
+  relay: GPIO10
+  button: {pin: GPIO9, pull: up, inverted: true}     # the devkit's BOOT button
+  led: {pin: GPIO11, inverted: true}

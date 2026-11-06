@@ -1,7 +1,9 @@
 name: nrf52840
 board: nrf52840dk/nrf52840
 toolchain: gnuarmemb               # GNU Arm Embedded (arm-none-eabi-gcc); GNUARMEMB_TOOLCHAIN_PATH
-build: {driver: sysbuild}          # MCUboot and the application signed for slot 0
+# swap using move, not the sysbuild default (swap using offset): the stack's OTA (ota.c) writes the image at the
+# start of slot 1, and swap using offset looks for it in the second sector, so it would never install one
+build: {driver: sysbuild, sb_config: [SB_CONFIG_MCUBOOT_MODE_SWAP_USING_MOVE=y]}          # MCUboot and the application signed for slot 0
 roles: [router, end_device]
 # No sleepy end device: the stack has no light sleep, and its deep sleep needs a retained memory
 # the board does not describe. An end device stays awake.
@@ -27,5 +29,9 @@ pwm:
   channels: 4
   template: pwm.dtsi.j2
 kconfig_all: [CONFIG_IEEE802154_NRF5=y, CONFIG_ZIGBEE_STACK_SIZE=4096]
+# MCUboot's own options (sysbuild passes them as mcuboot_EXTRA_CONF_FILE): it prints nothing, so the UART is not
+# used (and not initialised) before the application starts
+loader:
+  conf: [CONFIG_MCUBOOT_LOG_LEVEL_OFF=y, CONFIG_CONSOLE=n, CONFIG_UART_CONSOLE=n, CONFIG_SERIAL=n]
 # MCUboot at 0, slot 0 at 0xC000 (472K), slot 1 at 0x82000; the NV storage at 0xF8000 stays out of the image
 flash: {loader_end: 0xC000, slot_size: 0x76000}

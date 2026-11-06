@@ -618,7 +618,7 @@ def test_phy6252_pins():
         resolve(Config.model_validate(d))
 
 
-@pytest.mark.parametrize("chip", ["esp32c6", "bl702", "phy6252"])
+@pytest.mark.parametrize("chip", ["esp32c6", "phy6252"])
 def test_new_chips_stay_awake(chip):
     d = board(chip).model_dump()
     d["zigbee"].update(role="end_device", sleepy=True)
@@ -914,3 +914,62 @@ def test_no_plugin_api_without_plugins(tmp_path):
     c = (tmp_path / "zb_device.c").read_text()
     assert "weak)) void zb_input_" not in c and "void zb_relay_" not in c
     assert "zbr_timer.c" not in (tmp_path / "CMakeLists.txt").read_text()
+
+
+def sleepy_bl702():
+    return yaml.safe_load((EX / "sleepy-th-bl702.yaml").read_text())
+
+
+def test_bl702_deep_sleep(tmp_path):
+    render(Config.model_validate(sleepy_bl702()), tmp_path, EX)
+    ov = (tmp_path / "dt_xt_zb1_devkit.overlay").read_text()
+    assert "zigbee,retained-mem = &retainedmem;" in ov and "zephyr,retained-ram" in ov
+    assert "end_device.conf" in (tmp_path / "CMakeLists.txt").read_text()
+    assert "end_device_awake.conf" not in (tmp_path / "CMakeLists.txt").read_text()
+    w = (tmp_path / "chip_wake.h").read_text()
+    assert "zb_ed_sleep_woke_from_deep" in w
+    g = (tmp_path / "zb_gen.h").read_text()
+    assert "ZBR_HAVE_RETAINED" not in g          # the report state is not kept: every wake reports every value
+    conf = (tmp_path / "prj.conf").read_text()
+    assert "CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS=60000" in conf
+
+
+def test_bl702_awake_has_no_retained_memory(tmp_path):
+    d = sleepy_bl702()
+    d["zigbee"]["sleepy"] = False
+    render(Config.model_validate(d), tmp_path, EX)
+    assert "retained" not in (tmp_path / "dt_xt_zb1_devkit.overlay").read_text()
+    assert "end_device_awake.conf" in (tmp_path / "CMakeLists.txt").read_text()
+
+
+def test_bl702_sleepy_has_no_pin_wake():
+    d = sleepy_bl702()
+    d["pins"]["contact"] = {"pin": "GPIO5", "pull": "up"}
+    d["components"].append({"id": "door", "type": "binary_input", "pin": "contact"})
+    with pytest.raises(ConfigError, match="no pin wake"):
+        resolve(Config.model_validate(d))
+    d["zigbee"]["sleepy"] = False                                       # awake: the input is fine
+    resolve(Config.model_validate(d))
+
+
+def test_pin_wake_chip_still_wants_wake_on_service_inputs():
+    d = yaml.safe_load((EX / "temp-humidity-sht30.yaml").read_text())   # tlsr8258: pins wake
+    assert resolve(Config.model_validate(d))["sleepy"]
+
+
+@pytest.mark.parametrize("chip", ["nrf52840", "esp32h2", "esp32c6", "bl702"])
+def test_sysbuild_chips_swap_using_move(chip, tmp_path):
+    """The stack's OTA writes the image at the start of slot 1; swap using offset (the sysbuild default) looks
+    for it in the second sector and would never install it. Checked in mcuemu: with the offset mode the old
+    image kept running, with swap using move the new one did."""
+    render(board(chip), tmp_path, EX)
+    info = json.loads((tmp_path / "build_info.json").read_text())
+    assert info["build"]["driver"] == "sysbuild"
+    assert "SB_CONFIG_MCUBOOT_MODE_SWAP_USING_MOVE=y" in info["build"]["sb_config"]
+
+
+def test_nrf52840_loader_prints_nothing(tmp_path):
+    render(board("nrf52840"), tmp_path, EX)
+    conf = (tmp_path / "loader.conf").read_text()
+    assert "CONFIG_CONSOLE=n" in conf and "CONFIG_SERIAL=n" in conf
+    assert not (tmp_path / "loader.overlay").exists()           # a sysbuild chip has no loader overlay of its own

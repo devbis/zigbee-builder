@@ -43,6 +43,22 @@
 		};
 	};
 };
+{% if sleepy %}
+
+/* The 4 KB retention RAM keeps its content through the hibernate: the outgoing frame counter of the stack. */
+&retram {
+	retainedmem: retainedmem {
+		compatible = "zephyr,retained-ram";
+		status = "okay";
+	};
+};
+
+/ {
+	chosen {
+		zigbee,retained-mem = &retainedmem;
+	};
+};
+{% endif %}
 {% for p in ports %}
 
 &{{ p }} {

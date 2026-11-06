@@ -14,7 +14,7 @@
 {% endif %}
 #define ZBR_WAKE_PERIOD_S {{ z.poll_interval }}
 
-{% if sleepy %}
+{% if sleepy and sleep.retained_attr is defined %}
 #if defined({{ sleep.retained_guard }})
 #include "{{ sleep.retained_header }}"
 #define ZBR_RETAINED {{ sleep.retained_attr }}

@@ -76,6 +76,7 @@ class Ctx:
     customs: list[dict] = field(default_factory=list)
     lights: list[dict] = field(default_factory=list)
     needs_serial: bool = False
+    pin_wake: bool = True       # a pin can end the chip's deep sleep (chip.yaml sleep: pin_wake)
 
 
 def _kind_sensor_i2c(ctx: Ctx, c, spec, bus_label):
@@ -136,7 +137,7 @@ def _kind_binary_input(ctx: Ctx, c, spec, bus_label):
     release = _ms(c.id, "release_delay", c.model_extra.get("release_delay", 0), 0, 65535)
     ctx.comps[c.id] = {
         "id": ident(c.id), "kind": "binary_input", "label": label, "debounce": deb, "release": release,
-        "wake": bool(c.model_extra.get("wake", True)), "chans": {"active": None}, "includes": [],
+        "wake": bool(c.model_extra.get("wake", ctx.pin_wake)), "chans": {"active": None}, "includes": [],
         "users": [],   # (callback statements), filled by the clusters that use it
         "initial": 2, "service": False,
     }
@@ -352,6 +353,7 @@ def resolve(cfg: Config):
     clusters = load_catalog("clusters")
     devices = yaml.safe_load((DATA / "devices.yaml").read_text())
     ctx = Ctx(cfg, chip, clusters)
+    ctx.pin_wake = bool((chip.d.get("sleep") or {}).get("pin_wake", True))
 
     if z.role not in chip.d["roles"]:
         raise ConfigError(f"chip {chip.name} does not support role {z.role}")
@@ -360,9 +362,9 @@ def resolve(cfg: Config):
     if sleepy and z.role != "end_device":
         raise ConfigError("sleepy: true needs role: end_device")
     if sleepy and not can_sleep:
-        raise ConfigError(f"sleepy: true is not supported on {chip.name}: the stack has no light sleep and "
-                          f"the chip pack describes no retained memory for the deep sleep. Use sleepy: false "
-                          f"(the end device stays awake) or a router")
+        raise ConfigError(f"sleepy: true is not supported on {chip.name}: the chip pack describes no deep sleep "
+                          f"for it (no sleep: in its chip.yaml). Use sleepy: false (the end device stays awake) "
+                          f"or a router")
     power = z.power or ("battery" if z.role == "end_device" else "mains")
 
     if z.role == "end_device" and not 1 <= z.poll_interval <= 60:
@@ -439,7 +441,7 @@ def resolve(cfg: Config):
         service_ids = list(dict.fromkeys(["svc_button", *service_ids]))
     for i in service_ids:
         comp = ctx.comps[i]
-        if sleepy and not comp["wake"]:
+        if sleepy and ctx.pin_wake and not comp["wake"]:
             raise ConfigError(f"service input '{i}': a sleepy device needs wake: true on it")
         comp["service"] = True
     service = {"hold_ms": (svc.hold if svc else 5) * 1000, "search_ms": (svc.search_time if svc else 60) * 1000,
@@ -479,6 +481,15 @@ def resolve(cfg: Config):
                 f"/ {{\n\taliases {{ led0 = &status_led; }};\n\tleds {{\n\t\tcompatible = \"gpio-leds\";\n"
                 f"\t\tstatus_led: status_led {{\n\t\t\tgpios = <&{p.node} {p.num} {pol}>;\n"
                 f"\t\t\tlabel = \"Status\";\n\t\t}};\n\t}};\n}};\n")
+
+    if sleepy and not ctx.pin_wake:
+        # the pins cannot end this chip's sleep: an input is seen only while it is awake. The service button is
+        # fine (the device does not sleep until it has joined), a sensor input would miss what happens asleep.
+        for i, c in ctx.comps.items():
+            if c["kind"] == "binary_input" and i != "svc_button":
+                raise ConfigError(f"component '{i}': {chip.name} has no pin wake from its deep sleep, a sleepy "
+                                  f"device would miss what the input does while it sleeps. Use sensors read "
+                                  f"on a timer, or sleepy: false")
 
     # --- endpoints
     eps, bindings, writes = [], [], []
@@ -983,7 +994,7 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     if z.role == "end_device":
         kconfig += [f"CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS={z.poll_interval * 1000}"]
         if r["sleepy"]:
-            kconfig += sleep["retained_kconfig"]
+            kconfig += sleep.get("retained_kconfig", [])
     if not z.debug:
         kconfig += (["CONFIG_CONSOLE=n", "CONFIG_UART_CONSOLE=n"] if ctx.needs_serial
                     else ["CONFIG_SERIAL=n", "CONFIG_CONSOLE=n", "CONFIG_UART_CONSOLE=n"])
@@ -1008,7 +1019,8 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     zb_ctx["plugin_files"] = plugin_files
 
     # devicetree overlay
-    base = jinja2.Template((chip.dir / "base.dtsi.j2").read_text()).render(name=z.name, ports=r["ports"])
+    base = jinja2.Template((chip.dir / "base.dtsi.j2").read_text()).render(name=z.name, ports=r["ports"],
+                                                                         sleepy=r["sleepy"])
     (out / f"{chip.overlay_name}.overlay").write_text(base + "\n" + "\n".join(ctx.overlay) + "\n"
                                                + "\n".join(r["overlay_tail"]))
 
@@ -1026,7 +1038,8 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
         "#pragma once\n#include <stdbool.h>\n#include <zephyr/drivers/gpio.h>\nstatic inline bool zbr_chip_cold_boot(void) { return true; }\nstatic inline void zbr_chip_wake_arm(const struct gpio_dt_spec *s) { (void)s; }\n")
     if chip.d.get("loader"):
         (out / "loader.conf").write_text("\n".join(chip.d["loader"]["conf"]) + "\n")
-        shutil.copy(chip.dir / chip.d["loader"]["overlay"], out / "loader.overlay")
+        if "overlay" in chip.d["loader"]:           # the sysbuild chips only configure MCUboot, their board has its own
+            shutil.copy(chip.dir / chip.d["loader"]["overlay"], out / "loader.overlay")
 
     info = {"name": z.name, "chip": chip.name, "board": chip.board, "snippet": chip.d.get("snippet"),
             "flash": chip.d["flash"], "build": chip.d.get("build", {"driver": "two_step"}),

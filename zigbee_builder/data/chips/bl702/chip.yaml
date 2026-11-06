@@ -4,12 +4,19 @@ toolchain: zephyr_sdk              # Zephyr SDK (riscv64-zephyr-elf)
 # MCUboot through sysbuild: the loader at flash 0x2000 (the boot ROM reads the boot header at 0, which the
 # flashing tool writes for the loader), the application signed for slot 0. The builder does not make the
 # boot header, so there is no full image: see "flash" below.
-build: {driver: sysbuild}
+# swap using move, not the sysbuild default (swap using offset): the stack's OTA (ota.c) writes the image at the
+# start of slot 1, and swap using offset looks for it in the second sector, so it would never install one
+build: {driver: sysbuild, sb_config: [SB_CONFIG_MCUBOOT_MODE_SWAP_USING_MOVE=y]}
 roles: [router, end_device]
-# The fork has a hibernate deep sleep for it (CONFIG_ZIGBEE_SLEEPY_DEEP, a retained RAM), which this pack
-# does not describe yet: an end device stays awake.
-sleep: null
-# OTA through MCUboot: slot 1 takes the image, MCUboot copies it into slot 0 (overwrite-only)
+# Deep sleep: the fork's hibernate (HBN0) between parent polls, woken by the RTC; every wake is a reset (boot ROM,
+# MCUboot, the application), the network comes back from the NV, the outgoing frame counter lives in the 4 KB
+# retention RAM (zephyr,retained-mem, in the overlay). No pin wake in the fork yet (pin_wake: false): an input
+# is seen only while the device is awake, so sensors are read on a timer. The report state is not kept over a
+# wake (no retained_attr): every bound value is reported on every wake.
+sleep: {pin_wake: false}
+wake_header: wake.h
+# OTA through MCUboot: slot 1 takes the image, MCUboot swaps it in (the sysbuild default, swap using offset; the
+# application requests a test upgrade and confirms it)
 ota: true
 snippet: null
 pins:

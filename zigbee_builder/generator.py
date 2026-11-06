@@ -84,8 +84,20 @@ def _kind_sensor_i2c(ctx: Ctx, c, spec, bus_label):
         raise ConfigError(f"component '{c.id}': needs an i2c: bus")
     addr = c.model_extra.get("address", spec["address"])
     label = f"c_{ident(c.id)}"
-    node = (f"\t{label}: {ident(c.id)}@{addr:x} {{\n\t\tcompatible = \"{spec['compatible']}\";\n"
-            f"\t\treg = <0x{addr:x}>;\n\t}};\n")
+    compat = spec["compatible"] if isinstance(spec["compatible"], list) else [spec["compatible"]]
+    props = ""
+    for name, default in spec.get("props", {}).items():
+        v = c.model_extra.get(name, default)
+        if v is True:
+            props += f"\t\t{name};\n"
+        elif isinstance(v, str):
+            props += f"\t\t{name} = \"{v}\";\n"
+        elif isinstance(v, int) and not isinstance(v, bool):
+            props += f"\t\t{name} = <{v}>;\n"
+        elif v is not False:
+            raise ConfigError(f"component '{c.id}': {name}: {v!r} is a number, a string or true")
+    node = (f"\t{label}: {ident(c.id)}@{addr:x} {{\n\t\tcompatible = {', '.join(chr(34) + k + chr(34) for k in compat)};\n"
+            f"\t\treg = <0x{addr:x}>;\n{props}\t}};\n")
     ctx.comps[c.id] = {
         "id": ident(c.id), "kind": "sensor_i2c", "label": label, "dt_node": node, "bus": bus_label,
         "chans": {"temperature": "SENSOR_CHAN_AMBIENT_TEMP", "humidity": "SENSOR_CHAN_HUMIDITY"},

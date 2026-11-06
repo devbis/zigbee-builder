@@ -973,3 +973,30 @@ def test_nrf52840_loader_prints_nothing(tmp_path):
     conf = (tmp_path / "loader.conf").read_text()
     assert "CONFIG_CONSOLE=n" in conf and "CONFIG_SERIAL=n" in conf
     assert not (tmp_path / "loader.overlay").exists()           # a sysbuild chip has no loader overlay of its own
+
+
+def test_lywsd03mmc_example(tmp_path):
+    cfg = load(str(EX / "lywsd03mmc.yaml"))
+    render(cfg, tmp_path, EX)
+    ov = (tmp_path / "tlsr8258_generic.overlay").read_text()
+    # the SHT4x binding requires `repeatability`: without it the devicetree does not compile
+    assert 'compatible = "sensirion,sht4x";' in ov and "repeatability = <2>;" in ov
+    assert "end_device.conf" in (tmp_path / "CMakeLists.txt").read_text()       # sleepy by default
+    assert "CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS=30000" in (tmp_path / "prj.conf").read_text()
+
+
+def test_sensor_node_properties(tmp_path):
+    d = yaml.safe_load((EX / "lywsd03mmc.yaml").read_text())
+    d["components"][0] = {"id": "climate", "type": "sht4x", "repeatability": 0}   # another value of a property
+    render(Config.model_validate(d), tmp_path, EX)
+    assert "repeatability = <0>;" in (tmp_path / "tlsr8258_generic.overlay").read_text()
+
+    d["components"][0] = {"id": "climate", "type": "shtc3"}                       # two compatibles, a string, a flag
+    render(Config.model_validate(d), tmp_path, EX)
+    ov = (tmp_path / "tlsr8258_generic.overlay").read_text()
+    assert 'compatible = "sensirion,shtc3", "sensirion,shtcx";' in ov and "reg = <0x70>;" in ov
+    assert 'measure-mode = "normal";' in ov and "clock-stretching;" in ov
+
+    d["components"][0] = {"id": "climate", "type": "sht4x", "repeatability": [1]}
+    with pytest.raises(ConfigError, match="a number, a string or true"):
+        resolve(Config.model_validate(d))

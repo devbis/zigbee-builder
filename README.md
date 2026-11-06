@@ -207,6 +207,30 @@ stack's OTA writes it at the start, so no update would have been installed; the 
 (`sb_config` in `chip.yaml`). The nRF52840's MCUboot logged to a UART that the emulated UARTE never lets initialise
 (and a battery device has no use for it): its `loader:` conf turns the console off.
 
+## What a device with a panel still needs
+
+`examples/lywsd03mmc.yaml` (Xiaomi LYWSD03MMC, revision B1.6) is the sensor, the battery and the button; it joins in
+mcuemu (`lywsd03mmc_v15`) as a sleepy end device. The hand-written firmware of this device also has a segment LCD and
+what goes with it, which the builder cannot express yet:
+
+- **The panel as a component.** `iotdrv,lywsd03mmc-lcd` of zephyr-iot-drivers (I2C panels, or the UART one of B1.6, found
+  at boot): it takes the temperature, the humidity and the battery percentage, draws the number, the unit, the
+  smiley and a low battery symbol. The builder has no display kind; its settings would be channels the coordinator
+  writes, and `write:` exists only for `tuya_mcu`.
+- **Settings in the NV.** The unit (degC or degF), the panel on or off, the smiley and its comfort ranges are kept over a
+  reset. `persist` exists only for the attributes of a custom cluster, not for those of a standard one.
+- **Thermostat User Interface Configuration with the device's attributes** (`0x0010` smiley, `0x0011` panel on,
+  `0x0102..0x0105` comfort ranges, as the zigbee2mqtt converters of this firmware expect): `extra:` gives the
+  attributes, but they must be writable, persistent and drive the panel.
+- **Calibration offsets** (attribute `0x0010` of the temperature and humidity clusters, added to the measurement,
+  persistent): `extra:` gives the attribute, nothing applies it to a channel.
+- **One build for every revision.** B1.4 has a SHTC3 (`type: shtc3`, in the catalog now) and an I2C panel, B1.6 a SHT4x and
+  the UART panel: the hand-written firmware probes the candidates at boot, the builder is one file per board.
+- **A pin held at boot.** B1.4's panel controller needs PB6 pulled up (a gpio hog): a `pins:` entry no component uses
+  does nothing.
+- **A transmit-only UART.** The chip pack's UART description wants a receive pin.
+- **The comfort logic** (the smiley is happy inside the ranges) is a derived value: a plugin today.
+
 ## Layout
 - `zigbee_builder/` CLI, schema (`config.py`), resolver and renderer (`generator.py`), west build + packaging (`build.py`)
 - `zigbee_builder/data/clusters/*.yaml` ZCL clusters as data (attributes, scale, reporting defaults)

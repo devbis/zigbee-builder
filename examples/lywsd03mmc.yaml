@@ -1,0 +1,36 @@
+# Xiaomi LYWSD03MMC, board revision B1.6: a battery temperature and humidity sensor, a sleepy end device
+# (TLSR8258, a SHT4x on the hardware I2C PC2/PC3, a CR2032 measured through the ADC, the reset test point PA5
+# as the button). The identity is the one of the hand-written firmware (zigbee-devices-firmware).
+#
+# Not here, see README ("What a device with a panel still needs"): the segment LCD (on UART0, PD7, at 38400 baud,
+# transmit only, in this revision) and what goes with it: Thermostat User Interface Configuration (the unit, the
+# comfort ranges of the smiley, the panel on or off), the calibration offsets and the other revisions' sensors.
+zigbee:
+  name: xiaomi-lywsd03mmc
+  manufacturer: DEVBIS
+  model: TH-XIAOMI-LYWSD03MMC
+  chip: tlsr8258
+  role: end_device
+  poll_interval: 30s          # the panel shows the last measurement until the next wake: twice a minute
+  ota_image_type: 0x5B07
+
+pins:
+  sda: PC2
+  scl: PC3
+  button: {pin: PA5, pull: up, inverted: true}      # the reset test point
+
+button: button
+
+i2c: {sda: sda, scl: scl}
+
+components:
+  - {id: climate, type: sht4x, address: 0x44}
+  - {id: bat, type: battery_adc}                    # CR2032: 2.2 V empty, 3.0 V full
+
+endpoints:
+  - id: 1
+    device: temperature_sensor
+    clusters:
+      power_config: {source: bat}
+      temperature: {source: climate.temperature}
+      humidity: {source: climate.humidity}

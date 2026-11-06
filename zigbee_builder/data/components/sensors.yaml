@@ -1,5 +1,9 @@
 # Zephyr-sensor-API chips on I2C. Channels are read in milli-units.
+# props: properties of the devicetree node the binding requires (a number, a string or true for a flag); a
+# component may give another value under the same name (`repeatability: 1`).
 sht3x:   {kind: sensor_i2c, compatible: "sensirion,sht3xd", address: 0x44}
-sht4x:   {kind: sensor_i2c, compatible: "sensirion,sht4x",  address: 0x44}
+sht4x:   {kind: sensor_i2c, compatible: "sensirion,sht4x",  address: 0x44, props: {repeatability: 2}}
+shtc3:   {kind: sensor_i2c, compatible: ["sensirion,shtc3", "sensirion,shtcx"], address: 0x70,
+          props: {measure-mode: "normal", clock-stretching: true}}
 aht20:   {kind: sensor_i2c, compatible: "aosong,aht20",     address: 0x38}
 cht8305: {kind: sensor_i2c, compatible: "sensylink,cht8305", address: 0x40}

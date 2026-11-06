@@ -1,0 +1,31 @@
+# A battery temperature/humidity sensor on the BL702 (XT-ZB1): a sleepy end device. It sleeps in the hibernate
+# of the BL702 between the polls of its parent; every wake is a reset, the network comes back from the NV.
+# The RTC is the only thing that wakes it (no pin wake yet): the sensor is read on every wake, the service
+# button (pairing, leaving the network) works while the device is awake. No battery ADC on this chip yet.
+zigbee:
+  name: sleepy-th-bl702
+  manufacturer: DEVBIS
+  model: TH-BL702
+  chip: bl702
+  role: end_device
+  poll_interval: 60s
+  ota_image_type: 0x5D01
+
+pins:
+  sda: GPIO1
+  scl: GPIO0
+  button: {pin: GPIO4, pull: up, inverted: true}
+
+button: button
+
+i2c: {sda: sda, scl: scl}
+
+components:
+  - {id: climate, type: sht3x, address: 0x44}
+
+endpoints:
+  - id: 1
+    device: temperature_sensor
+    clusters:
+      temperature: {source: climate.temperature}
+      humidity: {source: climate.humidity}

@@ -154,7 +154,7 @@ Not done: the weekly schedule, the Time cluster, the other chips.
 | `nrf52840` | GNU Arm Embedded (`GNUARMEMB_TOOLCHAIN_PATH`, default: where `arm-none-eabi-gcc` is) | everything except sleep: sensors (I2C, SAADC on VDD), IAS, plugs and relays, switch, light (4 PWM channels), custom cluster; MCUboot, signed image, OTA file; no sleepy |
 | `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake end device: relays, plugs, custom clusters; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet |
 | `esp32c6` | Zephyr SDK | as the ESP32-H2: router and awake end device; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet. Board: ESP32-C6-DevKitC (HP core) |
-| `bl702` | Zephyr SDK | router and awake end device: relays, plugs, sensors on I2C (hardware on GPIO0/1, 1/2, 8/9, 14/15, else bit-banged); **MCUboot**, signed image, OTA file (slot 0 at 0x20000, slot 1 at 0x88000, 0x68000 each); no full image: the boot ROM's header is written by the flashing tool (`bflb_mcu_tool` for `*-loader.bin`, then the signed image at 0x20000); needs the BL702 board of MCUboot (`modern-tc32/mcuboot`, branch `tc32-port`, pinned in `docker/pins.env`); **built, not run on hardware**; no sleepy yet; no ADC battery, no PWM yet. Board: XT-ZB1 (BL702C10) |
+| `bl702` | Zephyr SDK | router and awake end device: relays, plugs, sensors on I2C (hardware on GPIO0/1, 1/2, 8/9, 14/15, else bit-banged); **MCUboot**, signed image, OTA file (slot 0 at 0x20000, slot 1 at 0x88000, 0x68000 each); no full image: the boot ROM's header is written by the flashing tool (`bflb_mcu_tool` for `*-loader.bin`, then the signed image at 0x20000); needs the BL702 board of MCUboot (`modern-tc32/mcuboot`, branch `tc32-port`, pinned in `docker/pins.env`); **built, not run on hardware**; **sleepy end device (deep sleep)**, see Sleep below; no ADC battery, no PWM yet. Board: XT-ZB1 (BL702C10) |
 | `phy6252` | GNU Arm Embedded, or the ARM toolchain of the Zephyr SDK | the Ai-Thinker **PB-03F**: router and awake end device, bit-banged I2C; **MCUboot with one slot**: the loader image (`zephyr.phy6252.bin`, ROM table at 0x2000, code XIP at 0x11002400, 32 KB) and the application signed for slot 0 at 0x10000; the full image is flashed at 0x2000 (`rdwr_phy62x2.py`), later the application is replaced through the loader's serial recovery (mcumgr on UART0, P9/P10). **No OTA file**: the XIP window of the chip is 127 KB and the image fills it, so there is no room for slot 1. Needs the PB-03F board of MCUboot and the SoC image script of the Zephyr fork (see below). The fork's driver is experimental, **built, not run on hardware**; the flash is nearly full (a plug router: 99 %); no sleepy, no ADC battery, no PWM |
 
 nRF52840: pins are `P0.13` (port 0, pin 13; `P0.09`, `P0.10` NFC and `P0.18` reset are reserved), the battery is the
@@ -165,11 +165,47 @@ Pin names: ESP32-C6 and BL702 `GPIO10` (reserved: C6 GPIO12/13 USB and 24..29 fl
 PB-03F the pad as on the chip, `P2`, `P11` (the console P9/P10, the crystal P16/P17 and P1, P25..P27 are reserved).
 The boards of the examples are in `examples/boards/{esp32c6,bl702,phy6252}`.
 
-Sleep, on the nRF52840, ESP32-H2 and ESP32-C6, and on the BL702 and PHY6252 for now: the stack has no light sleep, and its deep sleep needs a retained memory the board does not
-describe, so `sleepy: true` is an error there. OTA works through `west build --sysbuild` (MCUboot and the application
+## Sleep
+
+A sleepy end device (`role: end_device`, `sleepy` true by default where the chip has a deep sleep) sleeps between the
+polls of its parent. The fork's stack has two modes: *deep* (every wake is a reset: the boot, the network back from
+the NV, the outgoing frame counter in a retained memory) and *light* (RAM kept, execution goes on); the builder does
+deep so far, a chip says so with `sleep:` in its `chip.yaml`, else `sleepy: true` is an error.
+
+| Chip | Deep sleep | Wakes it | Notes |
+|---|---|---|---|
+| `tlsr8258` | yes | RTC and any pin | the report state is kept in retained RAM (only the changed values go out) |
+| `bl702` | yes (`examples/sleepy-th-bl702.yaml`) | the RTC only | hibernate, 4 KB retention RAM; no pin wake in the fork: a sensor input would miss what happens asleep, so it is an error (the service button is fine); every wake reports every bound value; every wake boots through MCUboot (its slot check is off, `BOOT_VALIDATE_SLOT0=n`) |
+| `nrf52840`, `esp32h2`, `esp32c6`, `phy6252` | no | | System OFF of the nRF52 has no timer to end it, so the poll cannot wake it; the ESP packs describe no retained memory for it yet, and the PHY62xx port has no power management at all |
+
+OTA works through `west build --sysbuild` (MCUboot and the application
 signed for slot 0, with the development key of the Zephyr MCUboot); it needs the `tf-psa-crypto` and
 `tf-psa-crypto-drivers` modules (`west update tf-psa-crypto tf-psa-crypto-drivers` in the Zephyr workspace). The full
 image is MCUboot at 0x0, padded to the start of slot 0 (0x20000 on the H2, 0xC000 on the nRF), then the signed image; the OTA file is the signed image for the coordinator.
+
+## MCUboot checked in mcuemu
+
+The images with MCUboot were run in [mcuemu](../mcuemu) (the nRF52840, PHY6252, BL702, ESP32-C6 and ESP32-H2 models,
+with the TLSR8258 sampleGW as the coordinator): the boot ROM, MCUboot, the application in slot 0, and the join
+(an association request and response, then data from the new short address). Only the BL702 was also run on a
+board (XT-ZB1, flashed with `bflb-mcu-tool`: the loader and its boot header, the signed images, then a pending
+upgrade).
+
+| Chip | Boot and join | Upgrade (a pending image in slot 1, swapped in by MCUboot) |
+|---|---|---|
+| `nrf52840`, `esp32c6`, `esp32h2` | yes | yes, the new image (an end device) replaced the old one (a router) |
+| `bl702` | yes, also on an XT-ZB1 board | yes, also on the board (about 24 s for the swap with the loader's debug log on); an unconfirmed image is reverted at the next reset, as MCUboot's test upgrade should |
+| `phy6252` | yes | one slot, no upgrade; the serial recovery is not run |
+
+The board found two faults of the emulator, both fixed in mcuemu (branch `bl702-real-hardware`): it could not start
+the boot header `bflb-mcu-tool` writes (`no_segment` set, `img_start` the offset of the image), and it read the
+address of a flash erase or program from the wrong command word, so MCUboot's swap changed nothing. The loader's
+configuration (`CONFIG_BOOT_VALIDATE_SLOT0=n`, swap using move) was on the board too.
+
+What it found: the sysbuild default, *swap using offset*, expects the new image in the second sector of slot 1, and the
+stack's OTA writes it at the start, so no update would have been installed; the chips use *swap using move*
+(`sb_config` in `chip.yaml`). The nRF52840's MCUboot logged to a UART that the emulated UARTE never lets initialise
+(and a battery device has no use for it): its `loader:` conf turns the console off.
 
 ## Layout
 - `zigbee_builder/` CLI, schema (`config.py`), resolver and renderer (`generator.py`), west build + packaging (`build.py`)

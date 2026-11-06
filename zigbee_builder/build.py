@@ -113,6 +113,7 @@ def _build_sysbuild(project: Path, out: Path, info: dict, env: dict, west: str) 
     subprocess.run(
         [west, "build", "--sysbuild", "-p", "always", "-b", info["board"], "-d", str(build), str(project), "--",
          "-DSB_CONFIG_BOOTLOADER_MCUBOOT=y", *[f"-D{c}" for c in info["build"].get("sb_config", [])],
+         *([f"-Dmcuboot_EXTRA_CONF_FILE={project / 'loader.conf'}"] if (project / "loader.conf").exists() else []),
          f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
          f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
         cwd=env["ZEPHYR_BASE"], env=env, check=True)

@@ -1,0 +1,28 @@
+# A sleepy temperature/humidity sensor on an nRF52840. Deep sleep uses System ON + RTC, retaining RAM.
+zigbee:
+  name: sleepy-th-nrf52840
+  manufacturer: DEVBIS
+  model: TH-NRF52840
+  chip: nrf52840
+  role: end_device
+  poll_interval: 60s
+  ota_image_type: 0x5D01
+
+pins:
+  sda: P0.26
+  scl: P0.27
+  button: {pin: P1.01, pull: up, inverted: true}
+
+button: button
+
+i2c: {sda: sda, scl: scl}
+
+components:
+  - {id: climate, type: sht3x, address: 0x44}
+
+endpoints:
+  - id: 1
+    device: temperature_sensor
+    clusters:
+      temperature: {source: climate.temperature}
+      humidity: {source: climate.humidity}

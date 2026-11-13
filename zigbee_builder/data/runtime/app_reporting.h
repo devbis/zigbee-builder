@@ -21,5 +21,5 @@ void app_reporting_restore(void);
  * of an analog attribute (ignored for the others). A report goes out only when
  * the coordinator has bound the cluster.
  */
-void app_reporting_default(u8 endpoint, u16 cluster, u16 attr, u8 type, u16 min_s, u16 max_s,
-			   u32 change);
+void app_reporting_default(uint8_t endpoint, uint16_t cluster, uint16_t attr, uint8_t type, uint16_t min_s, uint16_t max_s,
+			   uint32_t change);

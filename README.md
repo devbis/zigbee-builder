@@ -151,7 +151,8 @@ Not done: the weekly schedule, the Time cluster, the other chips.
 | Chip | Toolchain | Status |
 |---|---|---|
 | `tlsr8258` | TC32 LLVM (`LLVM_TOOLCHAIN_PATH`) | everything; MCUboot loader, OTA, sleepy end device |
-| `nrf52840` | GNU Arm Embedded (`GNUARMEMB_TOOLCHAIN_PATH`, default: where `arm-none-eabi-gcc` is) | everything except sleep: sensors (I2C, SAADC on VDD), IAS, plugs and relays, switch, light (4 PWM channels), custom cluster; MCUboot, signed image, OTA file; no sleepy |
+| `nrf52840` | GNU Arm Embedded (`GNUARMEMB_TOOLCHAIN_PATH`, default: where `arm-none-eabi-gcc` is) | sensors (I2C, SAADC on VDD), IAS, plugs and relays, switch, light (4 PWM channels), custom cluster; MCUboot, signed image, OTA file; SED deep sleep (System ON + RTC, RAM retained) |
+| `nrf52840_nicenano` | GNU Arm Embedded | nice!nano / Pro Micro nRF52840 target; SED deep sleep (System ON + RTC, RAM retained); direct UF2 image for the board bootloader; no MCUboot or OTA |
 | `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake end device: relays, plugs, custom clusters; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet |
 | `esp32c6` | Zephyr SDK | as the ESP32-H2: router and awake end device; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet. Board: ESP32-C6-DevKitC (HP core) |
 | `bl702` | Zephyr SDK | router and awake end device: relays, plugs, sensors on I2C (hardware on GPIO0/1, 1/2, 8/9, 14/15, else bit-banged); **MCUboot**, signed image, OTA file (slot 0 at 0x20000, slot 1 at 0x88000, 0x68000 each); no full image: the boot ROM's header is written by the flashing tool (`bflb_mcu_tool` for `*-loader.bin`, then the signed image at 0x20000); needs the BL702 board of MCUboot (`modern-tc32/mcuboot`, branch `tc32-port`, pinned in `docker/pins.env`); **built, not run on hardware**; **sleepy end device (deep sleep)**, see Sleep below; no ADC battery, no PWM yet. Board: XT-ZB1 (BL702C10) |
@@ -161,22 +162,28 @@ nRF52840: pins are `P0.13` (port 0, pin 13; `P0.09`, `P0.10` NFC and `P0.18` res
 supply itself (SAADC on VDD), a light has four PWM channels. Flash: MCUboot at 0, slot 0 at 0xC000, slot 1 at 0x82000.
 The boards of the examples are in `examples/boards/nrf52840` (an nRF52840-DK).
 
+`nrf52840_nicenano` builds the `promicro_nrf52840/nrf52840/uf2` target. The example
+`examples/sleepy-th-nicenano.yaml` uses I2C on P1.00/P0.11. It deliberately leaves out the battery ADC: nice!nano
+measures the cell on P0.04 through its own divider, unlike the DK pack's direct VDD measurement.
+
 Pin names: ESP32-C6 and BL702 `GPIO10` (reserved: C6 GPIO12/13 USB and 24..29 flash; BL702 GPIO7/8 USB and 23..28 flash);
 PB-03F the pad as on the chip, `P2`, `P11` (the console P9/P10, the crystal P16/P17 and P1, P25..P27 are reserved).
 The boards of the examples are in `examples/boards/{esp32c6,bl702,phy6252}`.
 
 ## Sleep
 
-A sleepy end device (`role: end_device`, `sleepy` true by default where the chip has a deep sleep) sleeps between the
-polls of its parent. The fork's stack has two modes: *deep* (every wake is a reset: the boot, the network back from
-the NV, the outgoing frame counter in a retained memory) and *light* (RAM kept, execution goes on); the builder does
-deep so far, a chip says so with `sleep:` in its `chip.yaml`, else `sleepy: true` is an error.
+A sleepy end device (`role: end_device`, `sleepy` true by default where the chip pack describes sleep) sleeps between
+the polls of its parent. The nRF52840 SED profile calls its mode **deep sleep**: the CPU idles in System ON, the
+RTC-backed kernel timer wakes it for polling, and RAM/Zigbee state stay live. It does not reboot or use System OFF.
+The Zephyr fork has a dedicated `ZIGBEE_SLEEPY_DEEP_SYSTEM_ON` choice for this mode.
 
-| Chip | Deep sleep | Wakes it | Notes |
+| Chip | Sleep mode | Wakes it | Notes |
 |---|---|---|---|
-| `tlsr8258` | yes | RTC and any pin | the report state is kept in retained RAM (only the changed values go out) |
-| `bl702` | yes (`examples/sleepy-th-bl702.yaml`) | the RTC only | hibernate, 4 KB retention RAM; no pin wake in the fork: a sensor input would miss what happens asleep, so it is an error (the service button is fine); every wake reports every bound value; every wake boots through MCUboot (its slot check is off, `BOOT_VALIDATE_SLOT0=n`) |
-| `nrf52840`, `esp32h2`, `esp32c6`, `phy6252` | no | | System OFF of the nRF52 has no timer to end it, so the poll cannot wake it; the ESP packs describe no retained memory for it yet, and the PHY62xx port has no power management at all |
+| `tlsr8258` | deep, reset on wake | RTC and any pin | the report state is kept in retained RAM (only the changed values go out) |
+| `bl702` | deep, reset on wake (`examples/sleepy-th-bl702.yaml`) | the RTC only | hibernate, 4 KB retention RAM; no pin wake in the fork: a sensor input would miss what happens asleep, so it is an error (the service button is fine); every wake reports every bound value; every wake boots through MCUboot (its slot check is off, `BOOT_VALIDATE_SLOT0=n`) |
+| `nrf52840` | deep (System ON, RAM retained) | RTC-backed kernel timer; GPIO interrupts | in-place resume; no System OFF |
+| `nrf52840_nicenano` | deep (System ON, RAM retained) | RTC-backed kernel timer; GPIO interrupts | UF2 bootloader; no MCUboot or OTA |
+| `esp32h2`, `esp32c6`, `phy6252` | not supported yet | | |
 
 OTA works through `west build --sysbuild` (MCUboot and the application
 signed for slot 0, with the development key of the Zephyr MCUboot); it needs the `tf-psa-crypto` and

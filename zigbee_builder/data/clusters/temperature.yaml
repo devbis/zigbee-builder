@@ -8,7 +8,7 @@ attributes:
   measured_value:
     id: ZCL_TEMPERATURE_MEASUREMENT_ATTRID_MEASUREDVALUE
     type: INT16
-    c_type: s16
+    c_type: int16_t
     access: RR
     channel: temperature
     scale: 0.01
@@ -19,12 +19,12 @@ attributes:
   min_measured_value:
     id: ZCL_TEMPERATURE_MEASUREMENT_ATTRID_MINMEASUREDVALUE
     type: INT16
-    c_type: s16
+    c_type: int16_t
     access: R
     const: -4000
   max_measured_value:
     id: ZCL_TEMPERATURE_MEASUREMENT_ATTRID_MAXMEASUREDVALUE
     type: INT16
-    c_type: s16
+    c_type: int16_t
     access: R
     const: 12500

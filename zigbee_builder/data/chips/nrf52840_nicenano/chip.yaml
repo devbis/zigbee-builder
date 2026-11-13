@@ -1,0 +1,31 @@
+name: nrf52840_nicenano
+board: promicro_nrf52840/nrf52840/uf2
+toolchain: gnuarmemb               # GNU Arm Embedded (arm-none-eabi-gcc); GNUARMEMB_TOOLCHAIN_PATH
+build: {driver: plain, image: zephyr.uf2} # nice!nano has the Adafruit UF2 bootloader, not MCUboot
+roles: [end_device]
+# nRF SED deep sleep: the CPU idles in System ON, with RAM retained; the RTC-backed kernel timer wakes it to poll.
+sleep: {mode: deep_system_on, pin_wake: true}
+# Keep USB CDC from initializing at boot during battery operation; the separate USB-shell sample enables it.
+# The nRF52840 SoC DTS defaults its regulator to LDO; do not enable DCDC without confirming the board's inductor.
+ota: false
+snippet: null
+pins:
+  format: port_dot                 # P0.13 is port 0, pin 13
+  ports: {0: 32, 1: 16}
+  node: "gpio{port}"
+  # NFC, battery sense, VCC power switch and reset are board functions, not general GPIOs.
+  reserved: ["P0.04", "P0.09", "P0.10", "P0.13", "P0.18"]
+wake: none
+i2c_hw: {any: {template: i2c_hw.dtsi.j2}}     # TWIM, any pin pair
+led0_node: true                    # the board's led0 is P0.15
+# PWM: four channels of one instance, on any pins, in the order the light names them
+pwm:
+  device: pwm0
+  period_cycles: 12000             # 16 MHz counter: 1.3 kHz
+  assign: sequential
+  channels: 4
+  template: pwm.dtsi.j2
+kconfig_all: [CONFIG_IEEE802154_NRF5=y, CONFIG_ZIGBEE_STACK_SIZE=4096,
+              CONFIG_BOARD_SERIAL_BACKEND_CDC_ACM=n]
+# UF2 embeds this application partition offset; the bootloader occupies the beginning of flash.
+flash: {full_image_offset: 0x26000}

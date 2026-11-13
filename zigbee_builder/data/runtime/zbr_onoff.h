@@ -10,9 +10,9 @@
 #include "app_common.h"
 
 struct zbr_onoff {
-	u8 ep;
-	u8 startup;
-	u8 nv_item;
+	uint8_t ep;
+	uint8_t startup;
+	uint8_t nv_item;
 	void (*apply)(bool on);   /* drive the output */
 	bool state;               /* the OnOff attribute points here */
 	/* a pulse: on turns the output off again after this long (0: not a pulse); the state is not kept */
@@ -22,4 +22,4 @@ struct zbr_onoff {
 
 void zbr_onoff_init(struct zbr_onoff *o);
 void zbr_onoff_set(struct zbr_onoff *o, bool on);
-status_t zbr_onoff_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload);
+status_t zbr_onoff_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload);

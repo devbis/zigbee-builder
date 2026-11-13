@@ -425,14 +425,14 @@ static void app_bdb_active_ep_rsp_cb(void *p)
 {
 	const zdo_zdpDataInd_t *ind = (const zdo_zdpDataInd_t *)p;
 	const zdo_active_ep_resp_t *rsp;
-	u8 i;
+	uint8_t i;
 
 	if ((ind == NULL) || (ind->zpdu == NULL)) {
 		return;
 	}
 
 	rsp = (const zdo_active_ep_resp_t *)ind->zpdu;
-	if (ind->status != (u8)ZDO_SUCCESS || rsp->active_ep_count == 0U) {
+	if (ind->status != (uint8_t)ZDO_SUCCESS || rsp->active_ep_count == 0U) {
 		return;
 	}
 
@@ -440,11 +440,11 @@ static void app_bdb_active_ep_rsp_cb(void *p)
 		zdo_simple_descriptor_req_t sd_req;
 		epInfo_t ep_info;
 		struct {
-			u8 numAttr;
-			u16 attrID[2];
+			uint8_t numAttr;
+			uint16_t attrID[2];
 		} basic_read = {2U, {0x0004U, 0x0005U}};
-		u8 seq = 0U;
-		u8 ep = rsp->active_ep_lst[i];
+		uint8_t seq = 0U;
+		uint8_t ep = rsp->active_ep_lst[i];
 
 		sd_req.nwk_addr_interest = ind->src_addr;
 		sd_req.endpoint = ep;
@@ -482,7 +482,7 @@ void app_bdb_commissioning_status(uint8_t status, bool joinedNetwork)
 			 * making the interview flow response-driven rather than hardcoded.
 			 */
 			zdo_active_ep_req_t ep_req = {.nwk_addr_interest = 0x0000U};
-			u8 seq = 0U;
+			uint8_t seq = 0U;
 
 			(void)zb_zdoActiveEpReq(0x0000U, &ep_req, &seq, app_bdb_active_ep_rsp_cb);
 		}

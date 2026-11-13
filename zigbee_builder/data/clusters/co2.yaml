@@ -9,5 +9,5 @@ attributes:
   measured_value:
     {id: 0x0000, type: SINGLE_PREC, c_type: float, access: RR, channel: co2, scale: 1000000, min: 0, max: 0,
      invalid: 0x7FC00000, report: {min: 10s, max: 5min, change: 0}}
-  measurement_unit: {id: 0x0008, type: ENUM8, c_type: u8, access: R, const: 0}
-  measurement_medium: {id: 0x0009, type: ENUM8, c_type: u8, access: R, const: 0}
+  measurement_unit: {id: 0x0008, type: ENUM8, c_type: uint8_t, access: R, const: 0}
+  measurement_medium: {id: 0x0009, type: ENUM8, c_type: uint8_t, access: R, const: 0}

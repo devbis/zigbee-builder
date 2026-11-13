@@ -21,22 +21,22 @@ static struct zbr_light *the_light;
 /* Colour maths: every result is 0..255 linear light per channel        */
 /* ------------------------------------------------------------------ */
 
-static u8 mul255(u32 a, u32 b)
+static uint8_t mul255(uint32_t a, uint32_t b)
 {
-	return (u8)((a * b) / 255U);
+	return (uint8_t)((a * b) / 255U);
 }
 
 /* hue 0..254, saturation 0..254 at full value; the HSV of the colour wheel, gamma 2 to linear */
-static void hs_to_rgb(u8 hue, u8 sat, u8 rgb[3])
+static void hs_to_rgb(uint8_t hue, uint8_t sat, uint8_t rgb[3])
 {
-	u32 h = (u32)hue * 360U / 254U;
-	u32 s = (u32)sat * 255U / 254U;
-	u32 region = h / 60U;
-	u32 rem = (h % 60U) * 255U / 60U;
-	u8 p = (u8)(255U - s);
-	u8 q = (u8)(255U - mul255(s, rem));
-	u8 t = (u8)(255U - mul255(s, 255U - rem));
-	u8 v = 255U;
+	uint32_t h = (uint32_t)hue * 360U / 254U;
+	uint32_t s = (uint32_t)sat * 255U / 254U;
+	uint32_t region = h / 60U;
+	uint32_t rem = (h % 60U) * 255U / 60U;
+	uint8_t p = (uint8_t)(255U - s);
+	uint8_t q = (uint8_t)(255U - mul255(s, rem));
+	uint8_t t = (uint8_t)(255U - mul255(s, 255U - rem));
+	uint8_t v = 255U;
 
 	switch (region) {
 	case 0:
@@ -65,14 +65,14 @@ static void hs_to_rgb(u8 hue, u8 sat, u8 rgb[3])
 
 /* CIE xy (0..65535) at Y = 1 to linear sRGB, in fixed point (Q12 values, Q10 matrix), the brightest
  * channel at 255. X and Z are capped at 150 so the products stay below 2^31. */
-static void xy_to_rgb(u16 x, u16 y, u8 rgb[3])
+static void xy_to_rgb(uint16_t x, uint16_t y, uint8_t rgb[3])
 {
-	s32 X, Z, r, g, b, m;
-	u32 yy = y < 655U ? 655U : y;
-	s32 rest = 65536 - (s32)x - (s32)y;
+	int32_t X, Z, r, g, b, m;
+	uint32_t yy = y < 655U ? 655U : y;
+	int32_t rest = 65536 - (int32_t)x - (int32_t)y;
 
-	X = (s32)(((u32)x << 12) / yy);
-	Z = (s32)(((u32)(rest > 0 ? rest : 0) << 12) / yy);
+	X = (int32_t)(((uint32_t)x << 12) / yy);
+	Z = (int32_t)(((uint32_t)(rest > 0 ? rest : 0) << 12) / yy);
 	X = MIN(X, 150 * 4096);
 	Z = MIN(Z, 150 * 4096);
 	r = (3318 * X - 1574 * 4096 - 511 * Z) / 1024;
@@ -92,24 +92,24 @@ static void xy_to_rgb(u16 x, u16 y, u8 rgb[3])
 		b >>= 1;
 		m >>= 1;
 	}
-	rgb[0] = (u8)(r * 255 / m);
-	rgb[1] = (u8)(g * 255 / m);
-	rgb[2] = (u8)(b * 255 / m);
+	rgb[0] = (uint8_t)(r * 255 / m);
+	rgb[1] = (uint8_t)(g * 255 / m);
+	rgb[2] = (uint8_t)(b * 255 / m);
 }
 
-static u8 lerp(u32 a, u32 b, u32 num, u32 den)
+static uint8_t lerp(uint32_t a, uint32_t b, uint32_t num, uint32_t den)
 {
-	return (u8)((a * (den - num) + b * num) / den);
+	return (uint8_t)((a * (den - num) + b * num) / den);
 }
 
 /* A colour temperature as RGB for lamps without white channels: 2000 K, 4000 K and 6500 K anchors */
-static void mireds_to_rgb(u16 m, u8 rgb[3])
+static void mireds_to_rgb(uint16_t m, uint8_t rgb[3])
 {
-	static const u8 warm[3] = {255, 137, 18};   /* 500 mireds */
-	static const u8 mid[3] = {255, 209, 163};   /* 250 */
-	static const u8 cool[3] = {255, 249, 253};  /* 153 */
-	const u8 *a, *b;
-	u32 num, den;
+	static const uint8_t warm[3] = {255, 137, 18};   /* 500 mireds */
+	static const uint8_t mid[3] = {255, 209, 163};   /* 250 */
+	static const uint8_t cool[3] = {255, 249, 253};  /* 153 */
+	const uint8_t *a, *b;
+	uint32_t num, den;
 
 	m = CLAMP(m, 153U, 500U);
 	if (m >= 250U) {
@@ -123,16 +123,16 @@ static void mireds_to_rgb(u16 m, u8 rgb[3])
 }
 
 /* The target duty of every channel for the light's state */
-static void compute_target(struct zbr_light *l, u16 out[ZBR_LIGHT_CHANNELS])
+static void compute_target(struct zbr_light *l, uint16_t out[ZBR_LIGHT_CHANNELS])
 {
-	u8 comp[ZBR_LIGHT_CHANNELS] = {0};
+	uint8_t comp[ZBR_LIGHT_CHANNELS] = {0};
 	bool rgb = l->ch[ZBR_LIGHT_RED].present || l->ch[ZBR_LIGHT_GREEN].present ||
 		   l->ch[ZBR_LIGHT_BLUE].present;
 	bool warm = l->ch[ZBR_LIGHT_WARM].present, cool = l->ch[ZBR_LIGHT_COOL].present;
-	u32 lvl = l->on ? ((u32)l->level * l->level) / 254U : 0U; /* gamma 2, 0..254 */
+	uint32_t lvl = l->on ? ((uint32_t)l->level * l->level) / 254U : 0U; /* gamma 2, 0..254 */
 
 	if (rgb && l->color_mode != 2U) {
-		u8 c[3];
+		uint8_t c[3];
 
 		if (l->color_mode == 1U) {
 			xy_to_rgb(l->x, l->y, c);
@@ -143,16 +143,16 @@ static void compute_target(struct zbr_light *l, u16 out[ZBR_LIGHT_CHANNELS])
 		comp[ZBR_LIGHT_GREEN] = c[1];
 		comp[ZBR_LIGHT_BLUE] = c[2];
 	} else if (warm && cool) {
-		u32 span = l->mired_max > l->mired_min ? l->mired_max - l->mired_min : 1U;
-		u32 m = CLAMP(l->mireds, l->mired_min, l->mired_max);
-		u32 w = (m - l->mired_min) * 255U / span;   /* more mireds: warmer */
+		uint32_t span = l->mired_max > l->mired_min ? l->mired_max - l->mired_min : 1U;
+		uint32_t m = CLAMP(l->mireds, l->mired_min, l->mired_max);
+		uint32_t w = (m - l->mired_min) * 255U / span;   /* more mireds: warmer */
 
-		comp[ZBR_LIGHT_WARM] = (u8)w;
-		comp[ZBR_LIGHT_COOL] = (u8)(255U - w);
+		comp[ZBR_LIGHT_WARM] = (uint8_t)w;
+		comp[ZBR_LIGHT_COOL] = (uint8_t)(255U - w);
 	} else if (warm) {
 		comp[ZBR_LIGHT_WARM] = 255U;
 	} else if (rgb) {
-		u8 c[3];
+		uint8_t c[3];
 
 		mireds_to_rgb(l->mireds, c);
 		comp[ZBR_LIGHT_RED] = c[0];
@@ -162,9 +162,9 @@ static void compute_target(struct zbr_light *l, u16 out[ZBR_LIGHT_CHANNELS])
 
 	for (int i = 0; i < ZBR_LIGHT_CHANNELS; i++) {
 		/* comp 0..255 times lvl 0..254 -> a fraction of the period */
-		u32 d = ((u32)comp[i] * lvl * (l->period_cycles / 16U)) / (255U * 254U / 16U);
+		uint32_t d = ((uint32_t)comp[i] * lvl * (l->period_cycles / 16U)) / (255U * 254U / 16U);
 
-		out[i] = (u16)MIN(d, l->period_cycles);
+		out[i] = (uint16_t)MIN(d, l->period_cycles);
 	}
 }
 
@@ -188,9 +188,9 @@ static int transition_tick(void *arg)
 
 	if (l->steps_left > 1U) {
 		for (int i = 0; i < ZBR_LIGHT_CHANNELS; i++) {
-			s32 d = (s32)l->tgt[i] - (s32)l->cur[i];
+			int32_t d = (int32_t)l->tgt[i] - (int32_t)l->cur[i];
 
-			l->cur[i] = (u16)((s32)l->cur[i] + d / (s32)l->steps_left);
+			l->cur[i] = (uint16_t)((int32_t)l->cur[i] + d / (int32_t)l->steps_left);
 		}
 		l->steps_left--;
 		write_outputs(l);
@@ -203,7 +203,7 @@ static int transition_tick(void *arg)
 	return -1;
 }
 
-static void go(struct zbr_light *l, u32 transition_ms)
+static void go(struct zbr_light *l, uint32_t transition_ms)
 {
 	compute_target(l, l->tgt);
 	if (transition_ms < TICK_MS) {
@@ -212,7 +212,7 @@ static void go(struct zbr_light *l, u32 transition_ms)
 		write_outputs(l);
 		return;
 	}
-	l->steps_left = (u16)MIN(transition_ms / TICK_MS, 0xFFFFU);
+	l->steps_left = (uint16_t)MIN(transition_ms / TICK_MS, 0xFFFFU);
 	if (!l->ticking) {
 		l->ticking = true;
 		(void)ev_timer_taskPost(transition_tick, l, TICK_MS);
@@ -220,8 +220,8 @@ static void go(struct zbr_light *l, u32 transition_ms)
 }
 
 struct persist {
-	u8 level, mode, hue, sat;
-	u16 x, y, mireds;
+	uint8_t level, mode, hue, sat;
+	uint16_t x, y, mireds;
 };
 
 static int save_tick(void *arg)
@@ -250,10 +250,10 @@ static void publish(struct zbr_light *l)
 	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_COLOR_MODE, &l->color_mode);
 	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_CURRENT_HUE, &l->hue);
 	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_CURRENT_SATURATION, &l->sat);
-	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_CURRENT_X, (u8 *)&l->x);
-	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_CURRENT_Y, (u8 *)&l->y);
+	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_CURRENT_X, (uint8_t *)&l->x);
+	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_CURRENT_Y, (uint8_t *)&l->y);
 	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_COLOR_TEMPERATURE_MIREDS,
-		       (u8 *)&l->mireds);
+		       (uint8_t *)&l->mireds);
 	zcl_setAttrVal(l->ep, ZCL_CLUSTER_LIGHTING_COLOR_CONTROL, ZCL_ATTRID_ENHANCED_COLOR_MODE,
 		       &l->enhanced_color_mode);
 }
@@ -285,7 +285,7 @@ void zbr_light_init(struct zbr_light *l)
 
 void zbr_light_set_on(struct zbr_light *l, bool on)
 {
-	u32 ms = l->tr_override_ms >= 0 ? (u32)l->tr_override_ms : l->transition_ms;
+	uint32_t ms = l->tr_override_ms >= 0 ? (uint32_t)l->tr_override_ms : l->transition_ms;
 
 	l->tr_override_ms = -1;
 	l->on = on;
@@ -296,7 +296,7 @@ void zbr_light_set_on(struct zbr_light *l, bool on)
 /* Level Control                                                        */
 /* ------------------------------------------------------------------ */
 
-static void set_level(struct zbr_light *l, u8 level, u32 transition_ms, bool with_on_off)
+static void set_level(struct zbr_light *l, uint8_t level, uint32_t transition_ms, bool with_on_off)
 {
 	bool want_on = l->on;
 
@@ -306,7 +306,7 @@ static void set_level(struct zbr_light *l, u8 level, u32 transition_ms, bool wit
 	l->level = CLAMP(level, 1U, 254U);
 	publish(l);
 	save_later(l);
-	l->tr_override_ms = (s32)transition_ms;
+	l->tr_override_ms = (int32_t)transition_ms;
 	if (l->onoff != NULL && with_on_off && want_on != l->on) {
 		zbr_onoff_set(l->onoff, want_on);   /* applies through zbr_light_set_on */
 	} else {
@@ -315,12 +315,12 @@ static void set_level(struct zbr_light *l, u8 level, u32 transition_ms, bool wit
 	}
 }
 
-status_t zbr_light_level_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload)
+status_t zbr_light_level_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload)
 {
 	struct zbr_light *l = the_light;
 	zcl_level_cmdPayload_t *p = payload;
 	bool with_on_off = false;
-	s32 target;
+	int32_t target;
 
 	ARG_UNUSED(addr_info);
 	if (l == NULL) {
@@ -331,23 +331,23 @@ status_t zbr_light_level_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *
 		with_on_off = true;
 		__fallthrough;
 	case ZCL_CMD_LEVEL_MOVE_TO_LEVEL:
-		set_level(l, p->moveToLevel.level, (u32)p->moveToLevel.transitionTime * 100U, with_on_off);
+		set_level(l, p->moveToLevel.level, (uint32_t)p->moveToLevel.transitionTime * 100U, with_on_off);
 		break;
 	case ZCL_CMD_LEVEL_STEP_WITH_ON_OFF:
 		with_on_off = true;
 		__fallthrough;
 	case ZCL_CMD_LEVEL_STEP:
-		target = (s32)l->level + (p->step.stepMode == LEVEL_STEP_UP ? 1 : -1) * (s32)p->step.stepSize;
-		set_level(l, (u8)CLAMP(target, with_on_off ? 0 : 1, 254),
-			  (u32)p->step.transitionTime * 100U, with_on_off);
+		target = (int32_t)l->level + (p->step.stepMode == LEVEL_STEP_UP ? 1 : -1) * (int32_t)p->step.stepSize;
+		set_level(l, (uint8_t)CLAMP(target, with_on_off ? 0 : 1, 254),
+			  (uint32_t)p->step.transitionTime * 100U, with_on_off);
 		break;
 	case ZCL_CMD_LEVEL_MOVE_WITH_ON_OFF:
 		with_on_off = true;
 		__fallthrough;
 	case ZCL_CMD_LEVEL_MOVE: {
-		u32 rate = p->move.rate ? p->move.rate : 1U;
-		u8 end = p->move.moveMode == LEVEL_MOVE_UP ? 254U : (with_on_off ? 0U : 1U);
-		u32 dist = end > l->level ? end - l->level : l->level - end;
+		uint32_t rate = p->move.rate ? p->move.rate : 1U;
+		uint8_t end = p->move.moveMode == LEVEL_MOVE_UP ? 254U : (with_on_off ? 0U : 1U);
+		uint32_t dist = end > l->level ? end - l->level : l->level - end;
 
 		set_level(l, end, dist * 1000U / rate, with_on_off);
 		break;
@@ -365,16 +365,16 @@ status_t zbr_light_level_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *
 /* Color Control                                                        */
 /* ------------------------------------------------------------------ */
 
-static u8 step_u8(u8 v, u8 mode, u8 size)
+static uint8_t step_u8(uint8_t v, uint8_t mode, uint8_t size)
 {
-	return (u8)CLAMP((s32)v + (mode == COLOR_CTRL_STEP_MODE_UP ? 1 : -1) * (s32)size, 0, 254);
+	return (uint8_t)CLAMP((int32_t)v + (mode == COLOR_CTRL_STEP_MODE_UP ? 1 : -1) * (int32_t)size, 0, 254);
 }
 
-status_t zbr_light_color_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload)
+status_t zbr_light_color_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload)
 {
 	struct zbr_light *l = the_light;
 	zcl_colorCtrl_cmdPayload_t *p = payload;
-	u32 ms = 0U;
+	uint32_t ms = 0U;
 
 	ARG_UNUSED(addr_info);
 	if (l == NULL) {
@@ -384,53 +384,53 @@ status_t zbr_light_color_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_MOVE_TO_HUE:
 		l->hue = MIN(p->moveToHue.hue, 254U);
 		l->color_mode = 0U;
-		ms = (u32)p->moveToHue.transitionTime * 100U;
+		ms = (uint32_t)p->moveToHue.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_MOVE_TO_SATURATION:
 		l->sat = MIN(p->moveToSaturation.saturation, 254U);
 		l->color_mode = 0U;
-		ms = (u32)p->moveToSaturation.transitionTime * 100U;
+		ms = (uint32_t)p->moveToSaturation.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_MOVE_TO_HUE_AND_SATURATION:
 		l->hue = MIN(p->moveToHueAndSaturation.hue, 254U);
 		l->sat = MIN(p->moveToHueAndSaturation.saturation, 254U);
 		l->color_mode = 0U;
-		ms = (u32)p->moveToHueAndSaturation.transitionTime * 100U;
+		ms = (uint32_t)p->moveToHueAndSaturation.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_STEP_HUE:
 		l->hue = step_u8(l->hue, p->stepHue.stepMode, p->stepHue.stepSize);
 		l->color_mode = 0U;
-		ms = (u32)p->stepHue.transitionTime * 100U;
+		ms = (uint32_t)p->stepHue.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_STEP_SATURATION:
 		l->sat = step_u8(l->sat, p->stepSaturation.stepMode, p->stepSaturation.stepSize);
 		l->color_mode = 0U;
-		ms = (u32)p->stepSaturation.transitionTime * 100U;
+		ms = (uint32_t)p->stepSaturation.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_MOVE_TO_COLOR:
 		l->x = p->moveToColor.colorX;
 		l->y = p->moveToColor.colorY;
 		l->color_mode = 1U;
-		ms = (u32)p->moveToColor.transitionTime * 100U;
+		ms = (uint32_t)p->moveToColor.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_STEP_COLOR:
-		l->x = (u16)CLAMP((s32)l->x + p->stepColor.stepX, 0, 65279);
-		l->y = (u16)CLAMP((s32)l->y + p->stepColor.stepY, 0, 65279);
+		l->x = (uint16_t)CLAMP((int32_t)l->x + p->stepColor.stepX, 0, 65279);
+		l->y = (uint16_t)CLAMP((int32_t)l->y + p->stepColor.stepY, 0, 65279);
 		l->color_mode = 1U;
-		ms = (u32)p->stepColor.transitionTime * 100U;
+		ms = (uint32_t)p->stepColor.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_MOVE_TO_COLOR_TEMPERATURE:
 		l->mireds = CLAMP(p->moveToColorTemperature.colorTemperature, l->mired_min, l->mired_max);
 		l->color_mode = 2U;
-		ms = (u32)p->moveToColorTemperature.transitionTime * 100U;
+		ms = (uint32_t)p->moveToColorTemperature.transitionTime * 100U;
 		break;
 	case ZCL_CMD_LIGHT_COLOR_CONTROL_STEP_COLOR_TEMPERATURE: {
-		s32 d = (s32)p->stepColorTemperature.stepSize *
+		int32_t d = (int32_t)p->stepColorTemperature.stepSize *
 			(p->stepColorTemperature.stepMode == COLOR_CTRL_STEP_MODE_UP ? 1 : -1);
 
-		l->mireds = (u16)CLAMP((s32)l->mireds + d, l->mired_min, l->mired_max);
+		l->mireds = (uint16_t)CLAMP((int32_t)l->mireds + d, l->mired_min, l->mired_max);
 		l->color_mode = 2U;
-		ms = (u32)p->stepColorTemperature.transitionTime * 100U;
+		ms = (uint32_t)p->stepColorTemperature.transitionTime * 100U;
 		break;
 	}
 	default:

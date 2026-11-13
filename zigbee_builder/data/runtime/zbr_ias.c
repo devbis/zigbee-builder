@@ -15,25 +15,25 @@
 #define MAX_ZONES    4U
 
 struct nv_rec {
-	u8 version;
-	u8 zone_state;
-	u8 zone_id;
-	u8 cie_addr[8];
-	u16 zone_status;
-	u8 crc;
+	uint8_t version;
+	uint8_t zone_state;
+	uint8_t zone_id;
+	uint8_t cie_addr[8];
+	uint16_t zone_status;
+	uint8_t crc;
 };
 
 static struct zbr_ias *zones[MAX_ZONES];
 static size_t n_zones;
 
-static u8 crc8(const u8 *p, size_t n)
+static uint8_t crc8(const uint8_t *p, size_t n)
 {
-	u8 crc = 0U;
+	uint8_t crc = 0U;
 
 	while (n-- > 0U) {
 		crc ^= *p++;
 		for (int i = 0; i < 8; i++) {
-			crc = (crc & 0x80U) ? (u8)((crc << 1) ^ 0x07U) : (u8)(crc << 1);
+			crc = (crc & 0x80U) ? (uint8_t)((crc << 1) ^ 0x07U) : (uint8_t)(crc << 1);
 		}
 	}
 	return crc;
@@ -49,9 +49,9 @@ static void save(const struct zbr_ias *z)
 	r.zone_id = z->zone_id;
 	memcpy(r.cie_addr, z->cie_addr, sizeof(r.cie_addr));
 	r.zone_status = z->zone_status;
-	r.crc = crc8((const u8 *)&r, offsetof(struct nv_rec, crc));
+	r.crc = crc8((const uint8_t *)&r, offsetof(struct nv_rec, crc));
 	/* NVS skips a write of what it already holds */
-	(void)nv_flashWriteNew(1, NV_MODULE_APP, NV_ITEM_BASE + z->nv_slot, sizeof(r), (u8 *)&r);
+	(void)nv_flashWriteNew(1, NV_MODULE_APP, NV_ITEM_BASE + z->nv_slot, sizeof(r), (uint8_t *)&r);
 }
 
 void zbr_ias_init(struct zbr_ias *z)
@@ -63,9 +63,9 @@ void zbr_ias_init(struct zbr_ias *z)
 	z->zone_status = 0U;
 	memset(z->cie_addr, 0, sizeof(z->cie_addr));
 
-	if (nv_flashReadNew(1, NV_MODULE_APP, NV_ITEM_BASE + z->nv_slot, sizeof(r), (u8 *)&r) ==
+	if (nv_flashReadNew(1, NV_MODULE_APP, NV_ITEM_BASE + z->nv_slot, sizeof(r), (uint8_t *)&r) ==
 		    NV_SUCC &&
-	    r.version == NV_VERSION && r.crc == crc8((const u8 *)&r, offsetof(struct nv_rec, crc))) {
+	    r.version == NV_VERSION && r.crc == crc8((const uint8_t *)&r, offsetof(struct nv_rec, crc))) {
 		z->zone_state = r.zone_state;
 		z->zone_id = r.zone_id;
 		memcpy(z->cie_addr, r.cie_addr, sizeof(z->cie_addr));
@@ -94,7 +94,7 @@ static bool cie_set(const struct zbr_ias *z)
 	return false;
 }
 
-static void dst_unicast(epInfo_t *dst, u16 addr, u8 ep)
+static void dst_unicast(epInfo_t *dst, uint16_t addr, uint8_t ep)
 {
 	memset(dst, 0, sizeof(*dst));
 	dst->dstAddrMode = APS_SHORT_DSTADDR_WITHEP;
@@ -120,12 +120,12 @@ static bool notify(struct zbr_ias *z)
 	return true;
 }
 
-void zbr_ias_set(struct zbr_ias *z, u16 mask, bool on)
+void zbr_ias_set(struct zbr_ias *z, uint16_t mask, bool on)
 {
-	u16 old = z->zone_status;
+	uint16_t old = z->zone_status;
 
-	z->zone_status = on ? (u16)(old | mask) : (u16)(old & ~mask);
-	zcl_setAttrVal(z->ep, ZCL_CLUSTER_SS_IAS_ZONE, ZCL_ATTRID_ZONE_STATUS, (u8 *)&z->zone_status);
+	z->zone_status = on ? (uint16_t)(old | mask) : (uint16_t)(old & ~mask);
+	zcl_setAttrVal(z->ep, ZCL_CLUSTER_SS_IAS_ZONE, ZCL_ATTRID_ZONE_STATUS, (uint8_t *)&z->zone_status);
 	if (z->zone_status == old) {
 		return;
 	}
@@ -153,7 +153,7 @@ bool zbr_ias_pending(void)
 	return false;
 }
 
-static struct zbr_ias *by_ep(u8 ep)
+static struct zbr_ias *by_ep(uint8_t ep)
 {
 	for (size_t i = 0; i < n_zones; i++) {
 		if (zones[i]->ep == ep) {
@@ -163,7 +163,7 @@ static struct zbr_ias *by_ep(u8 ep)
 	return NULL;
 }
 
-status_t zbr_ias_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload)
+status_t zbr_ias_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload)
 {
 	struct zbr_ias *z = by_ep(addr_info->dstEp);
 

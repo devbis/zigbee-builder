@@ -26,35 +26,35 @@ enum zbr_light_channel {
 
 struct zbr_light {
 	/* configuration, from the generated code */
-	u8 ep;
+	uint8_t ep;
 	const struct device *pwm;
-	u32 period_cycles;
+	uint32_t period_cycles;
 	struct {
 		bool present;
 		bool inverted;
-		u8 pwm_channel;
+		uint8_t pwm_channel;
 	} ch[ZBR_LIGHT_CHANNELS];
-	u16 transition_ms;             /* On/Off transition when a command gives none */
-	u16 mired_min, mired_max;      /* the physical colour temperature range */
-	u8 nv_item;
+	uint16_t transition_ms;             /* On/Off transition when a command gives none */
+	uint16_t mired_min, mired_max;      /* the physical colour temperature range */
+	uint8_t nv_item;
 	struct zbr_onoff *onoff;       /* the On/Off server of the endpoint */
 
 	/* attributes (the generated tables point here) */
-	u8 level;                      /* CurrentLevel 1..254 */
-	u8 level_options;
-	u8 color_mode;                 /* 0 hue/saturation, 1 xy, 2 colour temperature */
-	u8 enhanced_color_mode;
-	u8 hue, sat;                   /* 0..254 */
-	u16 x, y;                      /* 0..65535 for 0..1 */
-	u16 mireds;
-	u8 color_options;
+	uint8_t level;                      /* CurrentLevel 1..254 */
+	uint8_t level_options;
+	uint8_t color_mode;                 /* 0 hue/saturation, 1 xy, 2 colour temperature */
+	uint8_t enhanced_color_mode;
+	uint8_t hue, sat;                   /* 0..254 */
+	uint16_t x, y;                      /* 0..65535 for 0..1 */
+	uint16_t mireds;
+	uint8_t color_options;
 
 	/* private */
 	bool on;
-	s32 tr_override_ms;            /* -1: none */
-	u16 cur[ZBR_LIGHT_CHANNELS];   /* duty in PWM cycles */
-	u16 tgt[ZBR_LIGHT_CHANNELS];
-	u16 steps_left;
+	int32_t tr_override_ms;            /* -1: none */
+	uint16_t cur[ZBR_LIGHT_CHANNELS];   /* duty in PWM cycles */
+	uint16_t tgt[ZBR_LIGHT_CHANNELS];
+	uint16_t steps_left;
 	bool ticking, save_armed;
 };
 
@@ -62,5 +62,5 @@ void zbr_light_init(struct zbr_light *l);
 /* The apply hook of the endpoint's On/Off server */
 void zbr_light_set_on(struct zbr_light *l, bool on);
 
-status_t zbr_light_level_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload);
-status_t zbr_light_color_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload);
+status_t zbr_light_level_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload);
+status_t zbr_light_color_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload);

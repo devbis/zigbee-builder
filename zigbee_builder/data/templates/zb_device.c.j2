@@ -47,7 +47,7 @@
 {% endif %}
 #define MEASURE_PERIOD_MS {{ measure_ms }}
 
-static const u16 cluster_rev = ZCL_ATTR_GLOBAL_CLUSTER_REVISION_DEFAULT;
+static const uint16_t cluster_rev = ZCL_ATTR_GLOBAL_CLUSTER_REVISION_DEFAULT;
 
 /* ---- components ---------------------------------------------------- */
 {% for c in comps.values() %}
@@ -140,7 +140,7 @@ static void {{ c.id }}_apply(bool on)
 {% elif c.kind == 'energy_meter' %}
 static const struct device *const {{ c.id }}_dev = DEVICE_DT_GET(DT_NODELABEL({{ c.label }}));
 static int32_t {{ c.id }}_voltage, {{ c.id }}_current, {{ c.id }}_power, {{ c.id }}_energy;
-static u32 {{ c.id }}_saved_wh;
+static uint32_t {{ c.id }}_saved_wh;
 
 /* thousandths: mV, mA, mW, and Wh (the energy channel is kWh) */
 static int32_t {{ c.id }}_milli(const struct sensor_value *v)
@@ -151,7 +151,7 @@ static int32_t {{ c.id }}_milli(const struct sensor_value *v)
 /* Give the driver the energy total it had before the reset (it lives in RAM there) */
 static void {{ c.id }}_restore(void)
 {
-	u32 wh;
+	uint32_t wh;
 	struct sensor_value v;
 
 	if (zbr_store_load({{ c.store_item }}, &wh, sizeof(wh))) {
@@ -181,8 +181,8 @@ static bool {{ c.id }}_read(void)
 	if (sensor_channel_get({{ c.id }}_dev, IOTDRV_SENSOR_CHAN_ENERGY, &v) == 0) {
 		{{ c.id }}_energy = {{ c.id }}_milli(&v);
 		/* A save per {{ c.persist_step_wh }} Wh: a power cut loses at most that */
-		if ((u32){{ c.id }}_energy >= {{ c.id }}_saved_wh + {{ c.persist_step_wh }}U) {
-			u32 wh = (u32){{ c.id }}_energy;
+		if ((uint32_t){{ c.id }}_energy >= {{ c.id }}_saved_wh + {{ c.persist_step_wh }}U) {
+			uint32_t wh = (uint32_t){{ c.id }}_energy;
 
 			zbr_store_save({{ c.store_item }}, &wh, sizeof(wh));
 			{{ c.id }}_saved_wh = wh;
@@ -276,7 +276,7 @@ static const {{ at.a.c_type }} {{ at.var }} = {{ at.const }};
 {% else %}
 {% if at.a.c_type == 'float' %}
 /* IEEE 754 single precision, kept as its bits (no soft-float on this toolchain) */
-static u32 {{ at.var }};
+static uint32_t {{ at.var }};
 {% else %}
 static {{ at.a.c_type }} {{ at.var }} = ({{ at.a.c_type }}){{ at.init }};
 {% endif %}
@@ -287,56 +287,56 @@ static {{ at.a.c_type }} {{ at.var }} = ({{ at.a.c_type }}){{ at.init }};
 static struct zbr_onoff {{ cl.onoff.var }} = {.ep = {{ cl.onoff.ep }}, .startup = {{ cl.onoff.startup }}, .nv_item = {{ cl.onoff.item }}, .pulse_ms = {{ cl.onoff.pulse }}, .apply = {{ cl.onoff.relay.id }}_apply};
 
 static const zclAttrInfo_t {{ cl.var }}_attrs[] = {
-	{ ZCL_ATTRID_ONOFF, ZCL_DATA_TYPE_BOOLEAN, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (u8 *)&{{ cl.onoff.var }}.state },
-	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&cluster_rev },
+	{ ZCL_ATTRID_ONOFF, ZCL_DATA_TYPE_BOOLEAN, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (uint8_t *)&{{ cl.onoff.var }}.state },
+	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&cluster_rev },
 };
 {% elif cl.light and cl.light_kind == 'light_level' %}
-static const u16 {{ cl.var }}_zero16;
+static const uint16_t {{ cl.var }}_zero16;
 
 static const zclAttrInfo_t {{ cl.var }}_attrs[] = {
 	{ ZCL_ATTRID_LEVEL_CURRENT_LEVEL, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, &{{ cl.light.id }}_light.level },
-	{ ZCL_ATTRID_LEVEL_REMAINING_TIME, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&{{ cl.var }}_zero16 },
+	{ ZCL_ATTRID_LEVEL_REMAINING_TIME, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&{{ cl.var }}_zero16 },
 	{ ZCL_ATTRID_LEVEL_OPTIONS, ZCL_DATA_TYPE_BITMAP8, ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, &{{ cl.light.id }}_light.level_options },
-	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&cluster_rev },
+	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&cluster_rev },
 };
 {% elif cl.light and cl.light_kind == 'light_color' %}
-static const u16 {{ cl.var }}_zero16;
-static const u16 {{ cl.var }}_caps = {{ cl.light.caps }};
-static const u16 {{ cl.var }}_ct_min = {{ cl.light.mired_min }};
-static const u16 {{ cl.var }}_ct_max = {{ cl.light.mired_max }};
+static const uint16_t {{ cl.var }}_zero16;
+static const uint16_t {{ cl.var }}_caps = {{ cl.light.caps }};
+static const uint16_t {{ cl.var }}_ct_min = {{ cl.light.mired_min }};
+static const uint16_t {{ cl.var }}_ct_max = {{ cl.light.mired_max }};
 
 static const zclAttrInfo_t {{ cl.var }}_attrs[] = {
 	{ ZCL_ATTRID_CURRENT_HUE, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, &{{ cl.light.id }}_light.hue },
 	{ ZCL_ATTRID_CURRENT_SATURATION, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, &{{ cl.light.id }}_light.sat },
-	{ ZCL_ATTRID_REMAINING_TIME, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&{{ cl.var }}_zero16 },
-	{ ZCL_ATTRID_CURRENT_X, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (u8 *)&{{ cl.light.id }}_light.x },
-	{ ZCL_ATTRID_CURRENT_Y, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (u8 *)&{{ cl.light.id }}_light.y },
-	{ ZCL_ATTRID_COLOR_TEMPERATURE_MIREDS, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (u8 *)&{{ cl.light.id }}_light.mireds },
+	{ ZCL_ATTRID_REMAINING_TIME, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&{{ cl.var }}_zero16 },
+	{ ZCL_ATTRID_CURRENT_X, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (uint8_t *)&{{ cl.light.id }}_light.x },
+	{ ZCL_ATTRID_CURRENT_Y, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (uint8_t *)&{{ cl.light.id }}_light.y },
+	{ ZCL_ATTRID_COLOR_TEMPERATURE_MIREDS, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ | ACCESS_CONTROL_REPORTABLE, (uint8_t *)&{{ cl.light.id }}_light.mireds },
 	{ ZCL_ATTRID_COLOR_MODE, ZCL_DATA_TYPE_ENUM8, ACCESS_CONTROL_READ, &{{ cl.light.id }}_light.color_mode },
 	{ ZCL_ATTRID_COLOR_OPTIONS, ZCL_DATA_TYPE_BITMAP8, ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, &{{ cl.light.id }}_light.color_options },
 	{ ZCL_ATTRID_ENHANCED_COLOR_MODE, ZCL_DATA_TYPE_ENUM8, ACCESS_CONTROL_READ, &{{ cl.light.id }}_light.enhanced_color_mode },
-	{ ZCL_ATTRID_COLOR_CAPABILITIES, ZCL_DATA_TYPE_BITMAP16, ACCESS_CONTROL_READ, (u8 *)&{{ cl.var }}_caps },
-	{ ZCL_ATTRID_COLOR_TEMP_PHYSICAL_MIN_MIREDS, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&{{ cl.var }}_ct_min },
-	{ ZCL_ATTRID_COLOR_TEMP_PHYSICAL_MAX_MIREDS, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&{{ cl.var }}_ct_max },
-	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&cluster_rev },
+	{ ZCL_ATTRID_COLOR_CAPABILITIES, ZCL_DATA_TYPE_BITMAP16, ACCESS_CONTROL_READ, (uint8_t *)&{{ cl.var }}_caps },
+	{ ZCL_ATTRID_COLOR_TEMP_PHYSICAL_MIN_MIREDS, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&{{ cl.var }}_ct_min },
+	{ ZCL_ATTRID_COLOR_TEMP_PHYSICAL_MAX_MIREDS, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&{{ cl.var }}_ct_max },
+	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&cluster_rev },
 };
 {% elif cl.ias %}
 static struct zbr_ias {{ cl.ias.var }} = {.ep = {{ cl.ias.ep }}, .zone_type = {{ cl.ias.zone_type | hex }}, .nv_slot = {{ cl.ias.slot }}};
 
 static const zclAttrInfo_t {{ cl.var }}_attrs[] = {
 	{ ZCL_ATTRID_ZONE_STATE, ZCL_DATA_TYPE_ENUM8, ACCESS_CONTROL_READ, &{{ cl.ias.var }}.zone_state },
-	{ ZCL_ATTRID_ZONE_TYPE, ZCL_DATA_TYPE_ENUM16, ACCESS_CONTROL_READ, (u8 *)&{{ cl.ias.var }}.zone_type },
-	{ ZCL_ATTRID_ZONE_STATUS, ZCL_DATA_TYPE_BITMAP16, ACCESS_CONTROL_READ, (u8 *)&{{ cl.ias.var }}.zone_status },
+	{ ZCL_ATTRID_ZONE_TYPE, ZCL_DATA_TYPE_ENUM16, ACCESS_CONTROL_READ, (uint8_t *)&{{ cl.ias.var }}.zone_type },
+	{ ZCL_ATTRID_ZONE_STATUS, ZCL_DATA_TYPE_BITMAP16, ACCESS_CONTROL_READ, (uint8_t *)&{{ cl.ias.var }}.zone_status },
 	{ ZCL_ATTRID_IAS_CIE_ADDR, ZCL_DATA_TYPE_IEEE_ADDR, ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, {{ cl.ias.var }}.cie_addr },
 	{ ZCL_ATTRID_ZONE_ID, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, &{{ cl.ias.var }}.zone_id },
-	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&cluster_rev },
+	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&cluster_rev },
 };
 {% else %}
 static const zclAttrInfo_t {{ cl.var }}_attrs[] = {
 {% for at in cl.attrs %}
-	{ {{ at.a.id }}, ZCL_DATA_TYPE_{{ at.a.type }}, {{ at.access }}, (u8 *)&{{ at.var }} },
+	{ {{ at.a.id }}, ZCL_DATA_TYPE_{{ at.a.type }}, {{ at.access }}, (uint8_t *)&{{ at.var }} },
 {% endfor %}
-	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (u8 *)&cluster_rev },
+	{ ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ, (uint8_t *)&cluster_rev },
 };
 {% endif %}
 {% if cl.custom %}
@@ -358,7 +358,7 @@ static status_t {{ cl.var }}_cmd(zclIncoming_t *in)
 	return zb_{{ cl.custom.name }}_on_command(in->hdr.cmd, in->pData, in->dataLen);
 }
 
-static status_t {{ cl.var }}_register(u8 ep, u16 manu, u8 n, const zclAttrInfo_t *attrs, cluster_forAppCb_t cb)
+static status_t {{ cl.var }}_register(uint8_t ep, uint16_t manu, uint8_t n, const zclAttrInfo_t *attrs, cluster_forAppCb_t cb)
 {
 	return zcl_registerCluster(ep, {{ cl.cat.id }}, manu, n, attrs, {{ cl.var }}_cmd, cb);
 }
@@ -378,7 +378,7 @@ void zb_{{ cl.custom.name }}_set_{{ at.name }}({{ at.api }} value)
 {
 	if (({{ at.a.c_type }})value != {{ at.var }}) {
 		{{ at.var }} = ({{ at.a.c_type }})value;
-		zcl_setAttrVal({{ cl.custom.ep }}, {{ cl.cat.id }}, {{ at.a.id }}, (u8 *){{ '&' }}{{ at.var }});
+		zcl_setAttrVal({{ cl.custom.ep }}, {{ cl.cat.id }}, {{ at.a.id }}, (uint8_t *){{ '&' }}{{ at.var }});
 	}
 }
 {% endfor %}
@@ -417,7 +417,7 @@ static void {{ cl.var }}_save(void)
 {% endfor %}
 {% set n_in = (2 if ep.first else 0) + ep.clusters | length %}
 {% if n_in %}
-static u16 ep{{ ep.id }}_in_clusters[] = {
+static uint16_t ep{{ ep.id }}_in_clusters[] = {
 {% if ep.first %}
 	ZCL_CLUSTER_GEN_BASIC,
 	ZCL_CLUSTER_GEN_IDENTIFY,
@@ -431,14 +431,14 @@ static u16 ep{{ ep.id }}_in_clusters[] = {
 
 {% if ep.first %}
 #if defined(CONFIG_ZIGBEE_OTA)
-static u16 ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}, {% endfor %}ZCL_CLUSTER_OTA };
+static uint16_t ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}, {% endfor %}ZCL_CLUSTER_OTA };
 {% if ep.out %}
 #else
-static u16 ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}{{ ", " if not loop.last }}{% endfor %} };
+static uint16_t ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}{{ ", " if not loop.last }}{% endfor %} };
 {% endif %}
 #endif
 {% else %}
-static u16 ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}{{ ", " if not loop.last }}{% endfor %} };
+static uint16_t ep{{ ep.id }}_out_clusters[] = { {% for o in ep.out %}{{ o }}{{ ", " if not loop.last }}{% endfor %} };
 {% endif %}
 {% endif %}
 
@@ -544,14 +544,14 @@ static void measure(void)
 			break;
 		}
 {% elif b.attr.a.c_type == 'float' %}
-		u32 v = zbr_float_bits({{ ident(b.comp) }}_{{ b.chan }}, {{ b.div }}U);
+		uint32_t v = zbr_float_bits({{ ident(b.comp) }}_{{ b.chan }}, {{ b.div }}U);
 {% else %}
 		{{ b.attr.a.c_type }} v = ({{ b.attr.a.c_type }})CLAMP({{ ident(b.comp) }}_{{ b.chan }} / {{ b.div }}, {{ b.attr.a.min }}, {{ b.attr.a.max }});
 {% endif %}
 
 		if ({% if b.map %}known && {% endif %}v != {{ b.var }}) {
 			{{ b.var }} = v;
-			zcl_setAttrVal({{ b.ep }}, {{ b.cluster.cat.id }}, {{ b.attr.a.id }}, (u8 *)&{{ b.var }});
+			zcl_setAttrVal({{ b.ep }}, {{ b.cluster.cat.id }}, {{ b.attr.a.id }}, (uint8_t *)&{{ b.var }});
 		}
 	}
 {% endfor %}
@@ -560,7 +560,7 @@ static void measure(void)
 {% if items and sleepy %}
 static const struct zbr_item report_items[] = {
 {% for epid, cl, at in items %}
-	{ {{ epid }}, {{ cl.cat.id }}, {{ at.a.id }}, ZCL_DATA_TYPE_{{ at.a.type }}, &{{ at.var }}, sizeof({{ at.var }}), {{ 'true' if at.a.c_type.startswith('s') else 'false' }}, (s32){{ '(%s)0x%X' % (at.a.c_type, at.a.invalid) if at.a.c_type.startswith('s') else '0x%X' % at.a.invalid }} },
+	{ {{ epid }}, {{ cl.cat.id }}, {{ at.a.id }}, ZCL_DATA_TYPE_{{ at.a.type }}, &{{ at.var }}, sizeof({{ at.var }}), {{ 'true' if at.a.c_type.startswith('int') else 'false' }}, (int32_t){{ '(%s)0x%X' % (at.a.c_type, at.a.invalid) if at.a.c_type.startswith('int') else '0x%X' % at.a.invalid }} },
 {% endfor %}
 };
 {% endif %}
@@ -637,7 +637,7 @@ void zbr_network_left(void)
 /* The coordinator wrote an attribute that is a datapoint of the MCU: send it, and take the value as the
  * channel's until the MCU reports (the measure loop would put the old one back otherwise). A value the
  * map does not know is not sent; the loop puts the channel's value back. */
-static void zb_mcu_write(u8 ep, u16 cluster, u16 attr, u8 type, const u8 *data)
+static void zb_mcu_write(uint8_t ep, uint16_t cluster, uint16_t attr, uint8_t type, const uint8_t *data)
 {
 {% for w in writes %}
 	if (ep == {{ w.ep }} && cluster == {{ w.cluster }} && attr == {{ w.attr }}) {
@@ -690,7 +690,7 @@ static void zcl_hook(zclIncoming_t *in)
 	    in->hdr.cmd == ZCL_CMD_WRITE_NO_RSP) {
 		const zclWriteCmd_t *w = in->attrCmd;
 
-		for (u8 i = 0; i < w->numAttr; i++) {
+		for (uint8_t i = 0; i < w->numAttr; i++) {
 			zb_mcu_write(in->msg->indInfo.dst_ep, in->msg->indInfo.cluster_id, w->attrList[i].attrID,
 				     w->attrList[i].dataType, w->attrList[i].attrData);
 		}

@@ -6,7 +6,7 @@ register: zcl_fan_control_register
 kconfig: [CONFIG_ZIGBEE_ZCL_FAN_CONTROL=y]
 attributes:
   fan_mode:
-    {id: ZCL_ATTRID_HVAC_FAN_CONTROL_FAN_MODE, type: ENUM8, c_type: u8, access: RWR, channel: fan_mode, scale: 1,
+    {id: ZCL_ATTRID_HVAC_FAN_CONTROL_FAN_MODE, type: ENUM8, c_type: uint8_t, access: RWR, channel: fan_mode, scale: 1,
      min: 0, max: 6, enum: {"off": 0, low: 1, medium: 2, high: 3, "on": 4, auto: 5, smart: 6},
      report: {min: 0s, max: 5min, change: 0}}
-  fan_mode_sequence: {id: ZCL_ATTRID_HVAC_FAN_CONTROL_FAN_MODE_SEQUENCE, type: ENUM8, c_type: u8, access: R, const: 5}
+  fan_mode_sequence: {id: ZCL_ATTRID_HVAC_FAN_CONTROL_FAN_MODE_SEQUENCE, type: ENUM8, c_type: uint8_t, access: R, const: 5}

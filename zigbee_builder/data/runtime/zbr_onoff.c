@@ -24,12 +24,12 @@ static void pulse_over(struct k_work *work)
 {
 	struct zbr_onoff *o = CONTAINER_OF(k_work_delayable_from_work(work), struct zbr_onoff, pulse_work);
 
-	(void)tl_zbTaskPost(pulse_task, o);
+	(void)zb_TaskPost(pulse_task, o);
 }
 
 void zbr_onoff_init(struct zbr_onoff *o)
 {
-	u8 prev = 0U;
+	uint8_t prev = 0U;
 
 	if (n_inst < MAX_INSTANCES) {
 		inst[n_inst++] = o;
@@ -47,7 +47,7 @@ void zbr_onoff_set(struct zbr_onoff *o, bool on)
 {
 	o->state = on;
 	o->apply(on);
-	zcl_setAttrVal(o->ep, ZCL_CLUSTER_GEN_ON_OFF, ZCL_ATTRID_ONOFF, (u8 *)&o->state);
+	zcl_setAttrVal(o->ep, ZCL_CLUSTER_GEN_ON_OFF, ZCL_ATTRID_ONOFF, (uint8_t *)&o->state);
 	if (o->pulse_ms != 0U) {
 		if (on) {
 			/* on again inside a pulse starts it over */
@@ -59,13 +59,13 @@ void zbr_onoff_set(struct zbr_onoff *o, bool on)
 		return;                   /* a pulse is not remembered over a reset */
 	}
 	if (o->startup == 2U) {
-		u8 v = on;
+		uint8_t v = on;
 
 		zbr_store_save(o->nv_item, &v, 1);
 	}
 }
 
-status_t zbr_onoff_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload)
+status_t zbr_onoff_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload)
 {
 	struct zbr_onoff *o = NULL;
 

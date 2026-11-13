@@ -1,0 +1,26 @@
+# A SHT3x temperature/humidity sensor for nice!nano. Connect SDA to P1.00 and SCL to P0.11.
+# This is a sleepy end device using deep sleep: System ON + RTC wake, with RAM and Zigbee state retained.
+zigbee:
+  name: sleepy-th-nicenano
+  manufacturer: DEVBIS
+  model: TH-NICENANO
+  chip: nrf52840_nicenano
+  role: end_device
+  poll_interval: 60s
+  ota_image_type: 0x5D02
+
+pins:
+  sda: P1.00
+  scl: P0.11
+
+i2c: {sda: sda, scl: scl}
+
+components:
+  - {id: climate, type: sht3x, address: 0x44}
+
+endpoints:
+  - id: 1
+    device: temperature_sensor
+    clusters:
+      temperature: {source: climate.temperature}
+      humidity: {source: climate.humidity}

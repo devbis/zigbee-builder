@@ -392,11 +392,10 @@ def test_nrf52840_pins():
         resolve(Config.model_validate(d))
 
 
-def test_nrf52840_no_sleepy():
+def test_nrf52840_sleepy_supported():
     d = nrf("temp-humidity-sht30").model_dump()
     d["zigbee"]["sleepy"] = True
-    with pytest.raises(ConfigError, match="not supported on nrf52840"):
-        resolve(Config.model_validate(d))
+    assert resolve(Config.model_validate(d))["sleepy"]
 
 
 def wall():

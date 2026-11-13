@@ -7,6 +7,6 @@
 #define ZBR_STORE_MAX 32U
 
 /* False when nothing valid is stored under @p item (@p buf is left alone) */
-bool zbr_store_load(u8 item, void *buf, size_t n);
+bool zbr_store_load(uint8_t item, void *buf, size_t n);
 /* NVS skips a write of what it already holds */
-void zbr_store_save(u8 item, const void *buf, size_t n);
+void zbr_store_save(uint8_t item, const void *buf, size_t n);

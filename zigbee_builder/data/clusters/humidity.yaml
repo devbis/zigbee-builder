@@ -8,7 +8,7 @@ attributes:
   measured_value:
     id: ZCL_RELATIVE_HUMIDITY_ATTRID_MEASUREDVALUE
     type: UINT16
-    c_type: u16
+    c_type: uint16_t
     access: RR
     channel: humidity
     scale: 0.01
@@ -19,12 +19,12 @@ attributes:
   min_measured_value:
     id: ZCL_RELATIVE_HUMIDITY_ATTRID_MINMEASUREDVALUE
     type: UINT16
-    c_type: u16
+    c_type: uint16_t
     access: R
     const: 0
   max_measured_value:
     id: ZCL_RELATIVE_HUMIDITY_ATTRID_MAXMEASUREDVALUE
     type: UINT16
-    c_type: u16
+    c_type: uint16_t
     access: R
     const: 10000

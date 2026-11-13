@@ -8,7 +8,7 @@ attributes:
   battery_voltage:
     id: ZCL_ATTRID_BATTERY_VOLTAGE
     type: UINT8
-    c_type: u8
+    c_type: uint8_t
     access: RR
     channel: voltage      # source "bat" means bat.voltage
     scale: 0.1            # ZCL unit = 0.1 V (channel is in mV)
@@ -19,7 +19,7 @@ attributes:
   battery_percentage:
     id: ZCL_ATTRID_BATTERY_PERCENTAGE_REMAINING
     type: UINT8
-    c_type: u8
+    c_type: uint8_t
     access: RR
     channel: percent
     scale: 0.5            # ZCL unit = 0.5 %

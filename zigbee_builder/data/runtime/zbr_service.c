@@ -34,7 +34,7 @@ static void leave_now(void)
 	}
 	memset(buf, 0, 16);                    /* nlme_leave_cnf_t: the address (8) and the status */
 	buf->hdr.leaveRejoin = 0U;
-	(void)tl_zbTaskPost(zdo_nlme_leave_confirm_cb, buf);
+	(void)zb_TaskPost(zdo_nlme_leave_confirm_cb, buf);
 }
 
 void zbr_service_hold(void)

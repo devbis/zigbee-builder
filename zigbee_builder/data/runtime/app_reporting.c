@@ -2,10 +2,10 @@
 
 #include "app_reporting.h"
 
-void app_reporting_default(u8 endpoint, u16 cluster, u16 attr, u8 type, u16 min_s, u16 max_s,
-			   u32 change)
+void app_reporting_default(uint8_t endpoint, uint16_t cluster, uint16_t attr, uint8_t type, uint16_t min_s, uint16_t max_s,
+			   uint32_t change)
 {
-	u8 chg[REPORTABLE_CHANGE_MAX_ANALOG_SIZE] = {0};
+	uint8_t chg[REPORTABLE_CHANGE_MAX_ANALOG_SIZE] = {0};
 	zclCfgReportRec_t rec = {
 		.direction = ZCL_SEND_ATTR_REPORTS,
 		.attrID = attr,
@@ -29,11 +29,11 @@ void app_reporting_default(u8 endpoint, u16 cluster, u16 attr, u8 type, u16 min_
 
 void app_reporting_restore(void)
 {
-	u8 used = 0U;
+	uint8_t used = 0U;
 
 	zcl_reportingTabInit();
 
-	for (u8 i = 0; i < ZCL_REPORTING_TABLE_NUM; i++) {
+	for (uint8_t i = 0; i < ZCL_REPORTING_TABLE_NUM; i++) {
 		reportCfgInfo_t *e = &reportingTab.reportCfgInfo[i];
 
 		if (!e->used) {

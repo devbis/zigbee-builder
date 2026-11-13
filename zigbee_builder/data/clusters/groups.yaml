@@ -7,6 +7,6 @@ attributes:
   name_support:
     id: ZCL_ATTRID_GROUP_NAME_SUPPORT
     type: BITMAP8
-    c_type: u8
+    c_type: uint8_t
     access: R
     const: 0

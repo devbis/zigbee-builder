@@ -38,43 +38,43 @@ LOG_MODULE_REGISTER(app_common);
 /* Basic cluster                                                       */
 /* ------------------------------------------------------------------ */
 
-static const u8 basic_zcl_ver = 3U;
-static const u8 basic_app_ver = APP_RELEASE;
-static const u8 basic_stack_ver = 2U;
-static const u8 basic_hw_ver = 1U;
-static const u8 basic_power_src = APP_POWER_SOURCE;
-static u8 basic_dev_enabled = 1U;
-static const u16 cluster_rev = ZCL_ATTR_GLOBAL_CLUSTER_REVISION_DEFAULT;
+static const uint8_t basic_zcl_ver = 3U;
+static const uint8_t basic_app_ver = APP_RELEASE;
+static const uint8_t basic_stack_ver = 2U;
+static const uint8_t basic_hw_ver = 1U;
+static const uint8_t basic_power_src = APP_POWER_SOURCE;
+static uint8_t basic_dev_enabled = 1U;
+static const uint16_t cluster_rev = ZCL_ATTR_GLOBAL_CLUSTER_REVISION_DEFAULT;
 
 /* ZCL character strings carry their length in the first byte. */
-static u8 basic_mfr_name[1U + sizeof(APP_MANUFACTURER)];
+static uint8_t basic_mfr_name[1U + sizeof(APP_MANUFACTURER)];
 /* The model id may change at run time (a thermostat learns its model from its MCU) */
 #define APP_BASIC_STR_MAX 32U
-static u8 basic_model_id[1U + APP_BASIC_STR_MAX];
+static uint8_t basic_model_id[1U + APP_BASIC_STR_MAX];
 static char model_id_str[APP_BASIC_STR_MAX + 1U] = APP_MODEL_ID;
-static u8 basic_sw_build[1U + sizeof(APP_SW_BUILD_ID)];
-static u8 basic_date_code[1U + sizeof(APP_DATE_CODE)];
+static uint8_t basic_sw_build[1U + sizeof(APP_SW_BUILD_ID)];
+static uint8_t basic_date_code[1U + sizeof(APP_DATE_CODE)];
 
 static const zclAttrInfo_t basic_attr_tbl[] = {
-	{ZCL_ATTRID_BASIC_ZCL_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (u8 *)&basic_zcl_ver},
-	{ZCL_ATTRID_BASIC_APP_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (u8 *)&basic_app_ver},
+	{ZCL_ATTRID_BASIC_ZCL_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (uint8_t *)&basic_zcl_ver},
+	{ZCL_ATTRID_BASIC_APP_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (uint8_t *)&basic_app_ver},
 	{ZCL_ATTRID_BASIC_STACK_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ,
-	 (u8 *)&basic_stack_ver},
-	{ZCL_ATTRID_BASIC_HW_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (u8 *)&basic_hw_ver},
+	 (uint8_t *)&basic_stack_ver},
+	{ZCL_ATTRID_BASIC_HW_VER, ZCL_DATA_TYPE_UINT8, ACCESS_CONTROL_READ, (uint8_t *)&basic_hw_ver},
 	{ZCL_ATTRID_BASIC_MFR_NAME, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
-	 (u8 *)basic_mfr_name},
+	 (uint8_t *)basic_mfr_name},
 	{ZCL_ATTRID_BASIC_MODEL_ID, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
-	 (u8 *)basic_model_id},
+	 (uint8_t *)basic_model_id},
 	{ZCL_ATTRID_BASIC_DATE_CODE, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
-	 (u8 *)basic_date_code},
+	 (uint8_t *)basic_date_code},
 	{ZCL_ATTRID_BASIC_POWER_SOURCE, ZCL_DATA_TYPE_ENUM8, ACCESS_CONTROL_READ,
-	 (u8 *)&basic_power_src},
+	 (uint8_t *)&basic_power_src},
 	{ZCL_ATTRID_BASIC_DEV_ENABLED, ZCL_DATA_TYPE_BOOLEAN,
-	 ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, (u8 *)&basic_dev_enabled},
+	 ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, (uint8_t *)&basic_dev_enabled},
 	{ZCL_ATTRID_BASIC_SW_BUILD_ID, ZCL_DATA_TYPE_CHAR_STR, ACCESS_CONTROL_READ,
-	 (u8 *)basic_sw_build},
+	 (uint8_t *)basic_sw_build},
 	{ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ,
-	 (u8 *)&cluster_rev},
+	 (uint8_t *)&cluster_rev},
 };
 
 /* ------------------------------------------------------------------ */
@@ -152,14 +152,14 @@ void app_led_search_start(void)
 /* Identify cluster                                                    */
 /* ------------------------------------------------------------------ */
 
-static u16 identify_time;
+static uint16_t identify_time;
 static ev_timer_event_t *identify_timer;
 
 static const zclAttrInfo_t identify_attr_tbl[] = {
 	{ZCL_ATTRID_IDENTIFY_TIME, ZCL_DATA_TYPE_UINT16,
-	 ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, (u8 *)&identify_time},
+	 ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE, (uint8_t *)&identify_time},
 	{ZCL_ATTRID_GLOBAL_CLUSTER_REVISION, ZCL_DATA_TYPE_UINT16, ACCESS_CONTROL_READ,
-	 (u8 *)&cluster_rev},
+	 (uint8_t *)&cluster_rev},
 };
 
 static void identify_stop(void)
@@ -195,7 +195,7 @@ static int identify_tick(void *arg)
 	return APP_IDENTIFY_TICK_MS;
 }
 
-static status_t identify_cb(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload)
+static status_t identify_cb(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload)
 {
 	ARG_UNUSED(addr_info);
 
@@ -226,7 +226,7 @@ void app_basic_set_model_id(const char *model_id)
 
 	memcpy(model_id_str, model_id, n);
 	model_id_str[n] = '\0';
-	basic_model_id[0] = (u8)n;
+	basic_model_id[0] = (uint8_t)n;
 	memcpy(&basic_model_id[1], model_id_str, n);
 }
 
@@ -338,7 +338,7 @@ static void factory_reset_task(void *arg)
 static void button_long_press(struct k_work *work)
 {
 	ARG_UNUSED(work);
-	(void)tl_zbTaskPost(factory_reset_task, NULL);
+	(void)zb_TaskPost(factory_reset_task, NULL);
 }
 
 static void button_debounce(struct k_work *work)
@@ -371,7 +371,7 @@ static void button_debounce(struct k_work *work)
 		}
 	}
 
-	(void)tl_zbTaskPost(button_task, (void *)(uintptr_t)(((uintptr_t)btn->idx << 1) | pressed));
+	(void)zb_TaskPost(button_task, (void *)(uintptr_t)(((uintptr_t)btn->idx << 1) | pressed));
 }
 
 static void button_isr(const struct device *port, struct gpio_callback *cb, uint32_t pins)

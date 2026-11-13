@@ -9,7 +9,7 @@
 #include "zbapi/zb_api.h"
 #include "zcl/general/zcl_onoff.h"
 
-void zbr_switch_send(u8 ep, enum zbr_switch_action action)
+void zbr_switch_send(uint8_t ep, enum zbr_switch_action action)
 {
 	epInfo_t dst;
 

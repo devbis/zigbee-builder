@@ -98,10 +98,16 @@ def _build_plain(project: Path, out: Path, info: dict, env: dict, west: str) -> 
          f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
          f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
         cwd=zb, env=env, check=True)
-    full = app / f"{info['name']}-{info['version']}-full.bin"
-    full.write_bytes((app / "zephyr" / info["build"].get("image", "zephyr.bin")).read_bytes())
-    print(f"{full.name}: {full.stat().st_size} bytes, flash at {info['flash']['full_image_offset']:#x}"
-          f"{'' if info['ota'] else ' (no OTA on this chip yet)'}")
+    image = app / "zephyr" / info["build"].get("image", "zephyr.bin")
+    if image.suffix == ".uf2":
+        full = app / f"{info['name']}-{info['version']}.uf2"
+        full.write_bytes(image.read_bytes())
+        print(f"{full.name}: {full.stat().st_size} bytes, UF2 for the board bootloader (no OTA)")
+    else:
+        full = app / f"{info['name']}-{info['version']}-full.bin"
+        full.write_bytes(image.read_bytes())
+        print(f"{full.name}: {full.stat().st_size} bytes, flash at {info['flash']['full_image_offset']:#x}"
+              f"{'' if info['ota'] else ' (no OTA on this chip yet)'}")
     return [full]
 
 

@@ -10,4 +10,4 @@ enum zbr_switch_action {
 	ZBR_SWITCH_TOGGLE,
 };
 
-void zbr_switch_send(u8 ep, enum zbr_switch_action action);
+void zbr_switch_send(uint8_t ep, enum zbr_switch_action action);

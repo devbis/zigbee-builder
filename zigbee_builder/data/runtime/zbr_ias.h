@@ -11,14 +11,14 @@
 #include "app_common.h"
 
 struct zbr_ias {
-	u8 ep;
-	u16 zone_type;
-	u8 nv_slot;
+	uint8_t ep;
+	uint16_t zone_type;
+	uint8_t nv_slot;
 	/* attributes, the generated table points here */
-	u8 zone_state;
-	u16 zone_status;
-	u8 zone_id;
-	u8 cie_addr[8];
+	uint8_t zone_state;
+	uint16_t zone_status;
+	uint8_t zone_id;
+	uint8_t cie_addr[8];
 	/* private */
 	bool notify_pending;
 };
@@ -26,10 +26,10 @@ struct zbr_ias {
 void zbr_ias_init(struct zbr_ias *z);
 
 /* Set or clear status bits (ZONE_STATUS_BIT_*); notifies when the status changed */
-void zbr_ias_set(struct zbr_ias *z, u16 mask, bool on);
+void zbr_ias_set(struct zbr_ias *z, uint16_t mask, bool on);
 
 /* Cluster command callback: Zone Enroll Response */
-status_t zbr_ias_cmd(zclIncomingAddrInfo_t *addr_info, u8 cmd_id, void *payload);
+status_t zbr_ias_cmd(zclIncomingAddrInfo_t *addr_info, uint8_t cmd_id, void *payload);
 
 /* The network was left and the NV erased: the enrollment is void, the zone is not enrolled any more */
 void zbr_ias_reset(struct zbr_ias *z);

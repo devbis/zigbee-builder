@@ -21,11 +21,11 @@ ACCESS = {"R": "ACCESS_CONTROL_READ", "RW": "(ACCESS_CONTROL_READ | ACCESS_CONTR
           "RWR": "(ACCESS_CONTROL_READ | ACCESS_CONTROL_WRITE | ACCESS_CONTROL_REPORTABLE)"}
 # user type -> (ZCL data type, C type, stdint type of the plugin API)
 CUSTOM_TYPES = {
-    "bool": ("BOOLEAN", "u8", "bool"), "uint8": ("UINT8", "u8", "uint8_t"),
-    "uint16": ("UINT16", "u16", "uint16_t"), "uint32": ("UINT32", "u32", "uint32_t"),
-    "int8": ("INT8", "s8", "int8_t"), "int16": ("INT16", "s16", "int16_t"),
-    "int32": ("INT32", "s32", "int32_t"), "enum8": ("ENUM8", "u8", "uint8_t"),
-    "bitmap8": ("BITMAP8", "u8", "uint8_t"), "bitmap16": ("BITMAP16", "u16", "uint16_t"),
+    "bool": ("BOOLEAN", "uint8_t", "bool"), "uint8": ("UINT8", "uint8_t", "uint8_t"),
+    "uint16": ("UINT16", "uint16_t", "uint16_t"), "uint32": ("UINT32", "uint32_t", "uint32_t"),
+    "int8": ("INT8", "int8_t", "int8_t"), "int16": ("INT16", "int16_t", "int16_t"),
+    "int32": ("INT32", "int32_t", "int32_t"), "enum8": ("ENUM8", "uint8_t", "uint8_t"),
+    "bitmap8": ("BITMAP8", "uint8_t", "uint8_t"), "bitmap16": ("BITMAP16", "uint16_t", "uint16_t"),
 }
 ZCL_CLUSTER_NUM_MAX_DEFAULT = 8
 ZCL_ATTRIBUTE_NUM_MAX_DEFAULT = 16
@@ -369,12 +369,15 @@ def resolve(cfg: Config):
 
     if z.role not in chip.d["roles"]:
         raise ConfigError(f"chip {chip.name} does not support role {z.role}")
+    sleep = chip.d.get("sleep") or {}
     can_sleep = chip.d.get("sleep") is not None
+    if sleep.get("mode", "deep") not in {"deep", "system_on", "deep_system_on"}:
+        raise ConfigError(f"chip {chip.name}: unsupported sleep mode '{sleep.get('mode')}'")
     sleepy = (z.role == "end_device" and can_sleep) if z.sleepy is None else z.sleepy
     if sleepy and z.role != "end_device":
         raise ConfigError("sleepy: true needs role: end_device")
     if sleepy and not can_sleep:
-        raise ConfigError(f"sleepy: true is not supported on {chip.name}: the chip pack describes no deep sleep "
+        raise ConfigError(f"sleepy: true is not supported on {chip.name}: the chip pack describes no SED sleep "
                           f"for it (no sleep: in its chip.yaml). Use sleepy: false (the end device stays awake) "
                           f"or a router")
     power = z.power or ("battery" if z.role == "end_device" else "mains")
@@ -593,8 +596,8 @@ def resolve(cfg: Config):
                         raise ConfigError(f"endpoint {e.id}/{cname}: source '{src}' is not a binary_input component")
                     ctx.comps[comp]["initial"] = 0
                     ctx.comps[comp]["users"].append(
-                        f"if ({v} != (u8)active) {{ {v} = active; zcl_setAttrVal({e.id}, {cat['id']}, "
-                        f"{a['id']}, (u8 *)&{v}); " + ("zb_schedule_report(); " if sleepy else "") + "}")
+                        f"if ({v} != (uint8_t)active) {{ {v} = active; zcl_setAttrVal({e.id}, {cat['id']}, "
+                        f"{a['id']}, (uint8_t *)&{v}); " + ("zb_schedule_report(); " if sleepy else "") + "}")
                 # reporting defaults, user override in physical units
                 rep = dict(a.get("report", {}))
                 rep.update(ccfg.get("report", {}) if aname == _first_measured(cat) else {})
@@ -621,7 +624,7 @@ def resolve(cfg: Config):
     for ep in eps:
         for cl in ep["clusters"]:
             for at in cl["attrs"]:
-                if "report" in at and sleepy and "invalid" in at["a"] and at["a"]["c_type"] != "u64":
+                if "report" in at and sleepy and "invalid" in at["a"] and at["a"]["c_type"] != "uint64_t":
                     items.append((ep["id"], cl, at))
     defaults = [(ep["id"], cl, at) for ep in eps for cl in ep["clusters"] for at in cl["attrs"] if "report" in at]
     # ota file / report group limits
@@ -676,7 +679,7 @@ def _custom(ctx: Ctx, e, ep, ccfg, cc, sleepy):
             at["report"] = {"min": seconds(r.get("min", "10s")), "max": seconds(r.get("max", "5min")),
                             "change": int(r.get("change", 0))}
         if a.persist:
-            size += {"u8": 1, "s8": 1, "u16": 2, "s16": 2, "u32": 4, "s32": 4, "float": 4}[ct]
+            size += {"uint8_t": 1, "int8_t": 1, "uint16_t": 2, "int16_t": 2, "uint32_t": 4, "int32_t": 4, "float": 4}[ct]
             persisted.append(at)
         cl["attrs"].append(at)
     if size > 32:
@@ -869,8 +872,8 @@ def _extras(cname, ccfg, ep_id):
         if "source" not in d:
             raise ConfigError(f"{where}: source: is required (a channel of a component)")
         zt, ct, _ = CUSTOM_TYPES[typ]
-        lo, hi = {"u8": (0, 255), "s8": (-128, 127), "u16": (0, 0xFFFF), "s16": (-32768, 32767),
-                  "u32": (0, 0xFFFFFFFF), "s32": (-2 ** 31, 2 ** 31 - 1)}[ct]
+        lo, hi = {"uint8_t": (0, 255), "int8_t": (-128, 127), "uint16_t": (0, 0xFFFF), "int16_t": (-32768, 32767),
+                  "uint32_t": (0, 0xFFFFFFFF), "int32_t": (-2 ** 31, 2 ** 31 - 1)}[ct]
         access = "RWR" if d.get("write") else "RR"
         a = {"id": f"0x{aid:04X}", "type": zt, "c_type": ct, "access": access, "channel": "", "scale": 1,
              "min": lo, "max": hi, "extra": True, "report": {"min": "10s", "max": "5min", "change": 0}}
@@ -981,6 +984,7 @@ def _first_measured(cat):
 def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     r = resolve(cfg)
     chip, ctx, z = r["chip"], r["ctx"], cfg.zigbee
+    sleep = chip.d.get("sleep") or {}
     out.mkdir(parents=True, exist_ok=True)
     env = jinja2.Environment(loader=jinja2.FileSystemLoader(str(DATA / "templates")),
                              keep_trailing_newline=True, trim_blocks=True, lstrip_blocks=True,
@@ -993,7 +997,6 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
         shutil.rmtree(rt)
     shutil.copytree(DATA / "runtime", rt)
 
-    sleep = chip.d.get("sleep") or {}
     manufacturer_code = z.manufacturer_code or chip.d.get("manufacturer_code")
     kconfig = list(dict.fromkeys(ctx.kconfig))
     kconfig += [f"CONFIG_ZIGBEE_ZCL_REPORTING_TABLE_SIZE={max(len(r['defaults']) + len(r['onoffs']) + 3, 4)}"]
@@ -1013,7 +1016,12 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     kconfig = [k if k.startswith("CONFIG_") else "CONFIG_" + k for k in kconfig]
 
     ota_type = z.ota_image_type
-    role_conf = ("router" if z.role == "router" else ("end_device" if r["sleepy"] else "end_device_awake"))
+    if z.role == "router":
+        role_conf = "router"
+    elif not r["sleepy"]:
+        role_conf = "end_device_awake"
+    else:
+        role_conf = "end_device_deep_system_on" if sleep.get("mode") in {"system_on", "deep_system_on"} else "end_device"
     zb_ctx = dict(r, z=z, role_conf=role_conf, ident=ident, ota_type=ota_type, manufacturer_code=manufacturer_code,
                   sleep=sleep, GROUP_MAX=r["group_max"], pwr={"battery": 3, "mains": 1}[r["power"]],
                   comps=ctx.comps, name=z.name, COMMON=COMMON_CLUSTERS,

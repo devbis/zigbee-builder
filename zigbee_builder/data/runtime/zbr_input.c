@@ -73,7 +73,7 @@ static void input_held(struct k_work *work)
 		CONTAINER_OF(k_work_delayable_from_work(work), struct zbr_input, hold_work);
 
 	if (in->state > 0) {
-		(void)tl_zbTaskPost(hold_task, in);
+		(void)zb_TaskPost(hold_task, in);
 	}
 }
 
@@ -96,7 +96,7 @@ static void input_apply(struct zbr_input *in, int level)
 	if (first && (in->initial == 2U || (in->initial == 1U && level == 0))) {
 		return;
 	}
-	(void)tl_zbTaskPost(input_task, in);
+	(void)zb_TaskPost(input_task, in);
 }
 
 static void input_debounced(struct k_work *work)

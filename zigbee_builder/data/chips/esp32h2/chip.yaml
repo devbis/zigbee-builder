@@ -5,9 +5,8 @@ toolchain: zephyr_sdk              # Zephyr SDK (riscv64-zephyr-elf), not the TC
 # start of slot 1, and swap using offset looks for it in the second sector, so it would never install one
 build: {driver: sysbuild, sb_config: [SB_CONFIG_MCUBOOT_MODE_SWAP_USING_MOVE=y]}          # one west build --sysbuild: MCUboot, and the app signed for slot 0
 roles: [router, end_device]
-# No sleepy end device: the stack has no light sleep, and the deep sleep needs retained memory
-# the board does not describe (sleep: null). An end device stays awake.
-sleep: null
+# Deep sleepy end device: RTC timer wake from soft-off resets the device; keep the Zigbee frame counter in RTC RAM.
+sleep: {mode: deep, pin_wake: false, kconfig: [CONFIG_COUNTER=y, CONFIG_PM_DEVICE=y]}
 # OTA through MCUboot: slot 1 takes the image, MCUboot swaps it in. Needs the tf-psa-crypto modules.
 ota: true
 snippet: null

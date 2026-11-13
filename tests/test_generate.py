@@ -308,15 +308,27 @@ def test_esp32h2_differences(tmp_path):
     assert "aliases { led0 = &status_led; }" in (tmp_path / "esp32h2_devkitm_esp32h2.overlay").read_text()
 
 
-def test_esp32h2_end_device_stays_awake(tmp_path):
+def test_esp32h2_end_device_can_stay_awake(tmp_path):
     cfg = load(str(EX / "plug-relay.yaml"), str(EX / "boards/esp32h2/plug-relay.yaml"))
     d = cfg.model_dump()
-    d["zigbee"].update(role="end_device")
+    d["zigbee"].update(role="end_device", sleepy=False)
     render(Config.model_validate(d), tmp_path, EX)
     assert "end_device_awake.conf" in (tmp_path / "CMakeLists.txt").read_text()
-    d["zigbee"]["sleepy"] = True
-    with pytest.raises(ConfigError, match="not supported on esp32h2"):
-        resolve(Config.model_validate(d))
+    assert not resolve(Config.model_validate(d))["sleepy"]
+
+
+@pytest.mark.parametrize("chip", ["esp32h2", "esp32c6"])
+def test_esp32_sleepy_end_device(chip, tmp_path):
+    d = board(chip).model_dump()
+    d["zigbee"].update(role="end_device", sleepy=True)
+    assert resolve(Config.model_validate(d))["sleepy"]
+    render(Config.model_validate(d), tmp_path, EX)
+    assert "end_device.conf" in (tmp_path / "CMakeLists.txt").read_text()
+    overlay = next(tmp_path.glob("*.overlay")).read_text()
+    assert "&deep_sleep" in overlay and "wakeup-source;" in overlay
+    assert "zigbee,retained-mem" in overlay
+    conf = (tmp_path / "prj.conf").read_text()
+    assert "CONFIG_COUNTER=y" in conf and "CONFIG_PM_DEVICE=y" in conf
 
 
 def test_esp32h2_pins():
@@ -617,11 +629,10 @@ def test_phy6252_pins():
         resolve(Config.model_validate(d))
 
 
-@pytest.mark.parametrize("chip", ["esp32c6", "phy6252"])
-def test_new_chips_stay_awake(chip):
-    d = board(chip).model_dump()
+def test_phy6252_stays_awake():
+    d = board("phy6252").model_dump()
     d["zigbee"].update(role="end_device", sleepy=True)
-    with pytest.raises(ConfigError, match=f"not supported on {chip}"):
+    with pytest.raises(ConfigError, match="not supported on phy6252"):
         resolve(Config.model_validate(d))
 
 

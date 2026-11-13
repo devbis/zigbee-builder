@@ -15,3 +15,20 @@
 	status = "okay";
 };
 {% endfor %}
+{% if sleepy %}
+&deep_sleep {
+	status = "okay";
+};
+
+&rtc_timer {
+	status = "okay";
+	wakeup-source;
+};
+
+/ {
+	chosen {
+		zigbee,aes = &aes;
+		zigbee,retained-mem = &retainedmem0;
+	};
+};
+{% endif %}

@@ -153,8 +153,8 @@ Not done: the weekly schedule, the Time cluster, the other chips.
 | `tlsr8258` | TC32 LLVM (`LLVM_TOOLCHAIN_PATH`) | everything; MCUboot loader, OTA, sleepy end device |
 | `nrf52840` | GNU Arm Embedded (`GNUARMEMB_TOOLCHAIN_PATH`, default: where `arm-none-eabi-gcc` is) | sensors (I2C, SAADC on VDD), IAS, plugs and relays, switch, light (4 PWM channels), custom cluster; MCUboot, signed image, OTA file; SED deep sleep (System ON + RTC, RAM retained) |
 | `nrf52840_nicenano` | GNU Arm Embedded | nice!nano / Pro Micro nRF52840 target; SED deep sleep (System ON + RTC, RAM retained); direct UF2 image for the board bootloader; no MCUboot or OTA |
-| `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake end device: relays, plugs, custom clusters; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet |
-| `esp32c6` | Zephyr SDK | as the ESP32-H2: router and awake end device; MCUboot, signed image, OTA file; no sleepy, no ADC battery, no PWM yet. Board: ESP32-C6-DevKitC (HP core) |
+| `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake/sleepy end device: relays, plugs, custom clusters; SED deep sleep (RTC wake, reset on wake); MCUboot, signed image, OTA file; no ADC battery, no PWM yet |
+| `esp32c6` | Zephyr SDK | as the ESP32-H2: router and awake/sleepy end device; SED deep sleep (RTC wake, reset on wake); MCUboot, signed image, OTA file; no ADC battery, no PWM yet. Board: ESP32-C6-DevKitC (HP core) |
 | `bl702` | Zephyr SDK | router and awake end device: relays, plugs, sensors on I2C (hardware on GPIO0/1, 1/2, 8/9, 14/15, else bit-banged); **MCUboot**, signed image, OTA file (slot 0 at 0x20000, slot 1 at 0x88000, 0x68000 each); no full image: the boot ROM's header is written by the flashing tool (`bflb_mcu_tool` for `*-loader.bin`, then the signed image at 0x20000); needs the BL702 board of MCUboot (`modern-tc32/mcuboot`, branch `tc32-port`, pinned in `docker/pins.env`); **built, not run on hardware**; **sleepy end device (deep sleep)**, see Sleep below; no ADC battery, no PWM yet. Board: XT-ZB1 (BL702C10) |
 | `phy6252` | GNU Arm Embedded, or the ARM toolchain of the Zephyr SDK | the Ai-Thinker **PB-03F**: router and awake end device, bit-banged I2C; **MCUboot with one slot**: the loader image (`zephyr.phy6252.bin`, ROM table at 0x2000, code XIP at 0x11002400, 32 KB) and the application signed for slot 0 at 0x10000; the full image is flashed at 0x2000 (`rdwr_phy62x2.py`), later the application is replaced through the loader's serial recovery (mcumgr on UART0, P9/P10). **No OTA file**: the XIP window of the chip is 127 KB and the image fills it, so there is no room for slot 1. Needs the PB-03F board of MCUboot and the SoC image script of the Zephyr fork (see below). The fork's driver is experimental, **built, not run on hardware**; the flash is nearly full (a plug router: 99 %); no sleepy, no ADC battery, no PWM |
 
@@ -183,7 +183,8 @@ The Zephyr fork has a dedicated `ZIGBEE_SLEEPY_DEEP_SYSTEM_ON` choice for this m
 | `bl702` | deep, reset on wake (`examples/sleepy-th-bl702.yaml`) | the RTC only | hibernate, 4 KB retention RAM; no pin wake in the fork: a sensor input would miss what happens asleep, so it is an error (the service button is fine); every wake reports every bound value; every wake boots through MCUboot (its slot check is off, `BOOT_VALIDATE_SLOT0=n`) |
 | `nrf52840` | deep (System ON, RAM retained) | RTC-backed kernel timer; GPIO interrupts | in-place resume; no System OFF |
 | `nrf52840_nicenano` | deep (System ON, RAM retained) | RTC-backed kernel timer; GPIO interrupts | UF2 bootloader; no MCUboot or OTA |
-| `esp32h2`, `esp32c6`, `phy6252` | not supported yet | | |
+| `esp32h2`, `esp32c6` | deep (soft-off, reset on wake) | RTC timer | security frame counter survives in retained RAM; GPIO inputs do not wake the sleeping device |
+| `phy6252` | not supported yet | | |
 
 OTA works through `west build --sysbuild` (MCUboot and the application
 signed for slot 0, with the development key of the Zephyr MCUboot); it needs the `tf-psa-crypto` and

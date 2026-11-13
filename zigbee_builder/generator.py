@@ -1009,6 +1009,7 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     if z.role == "end_device":
         kconfig += [f"CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS={z.poll_interval * 1000}"]
         if r["sleepy"]:
+            kconfig += sleep.get("kconfig", [])
             kconfig += sleep.get("retained_kconfig", [])
     if not z.debug:
         kconfig += (["CONFIG_CONSOLE=n", "CONFIG_UART_CONSOLE=n"] if ctx.needs_serial

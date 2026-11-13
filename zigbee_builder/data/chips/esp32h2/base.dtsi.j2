@@ -8,3 +8,41 @@
 	status = "okay";
 };
 {% endfor %}
+{% if sleepy %}
+&deep_sleep {
+	status = "okay";
+};
+
+&rtc_timer {
+	status = "okay";
+	wakeup-source;
+};
+
+&sramlp {
+	ranges = <0x0 0x50000000 0x1000>;
+
+	zigbee_retained_memory: memory@ff8 {
+		compatible = "zephyr,memory-region", "mmio-sram";
+		reg = <0xff8 0x8>;
+		zephyr,memory-region = "SRAMLP_RETAINED_MEM";
+		status = "okay";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		zigbee_retained_ram: retainedmem {
+			compatible = "zephyr,retained-ram";
+			status = "okay";
+			ranges;
+			#address-cells = <1>;
+			#size-cells = <1>;
+		};
+	};
+};
+
+/ {
+	chosen {
+		zigbee,aes = &aes;
+		zigbee,retained-mem = &zigbee_retained_ram;
+	};
+};
+{% endif %}

@@ -155,6 +155,7 @@ Not done: the weekly schedule, the Time cluster, the other chips.
 | `nrf52840_nicenano` | GNU Arm Embedded | nice!nano / Pro Micro nRF52840 target; SED deep sleep (System ON + RTC, RAM retained); direct UF2 image for the board bootloader; no MCUboot or OTA |
 | `esp32h2` | Zephyr SDK (`ZEPHYR_SDK_INSTALL_DIR`, default: the newest `~/zephyr-sdk-*`) | router and awake/sleepy end device: relays, plugs, custom clusters; SED deep sleep (RTC wake, reset on wake); MCUboot, signed image, OTA file; no ADC battery, no PWM yet |
 | `esp32c6` | Zephyr SDK | as the ESP32-H2: router and awake/sleepy end device; SED deep sleep (RTC wake, reset on wake); MCUboot, signed image, OTA file; no ADC battery, no PWM yet. Board: ESP32-C6-DevKitC (HP core) |
+| `stm32wb55` | GNU Arm Embedded (`GNUARMEMB_TOOLCHAIN_PATH`) | WeAct STM32WB55 Core Board; SED deep sleep (RTC timed Standby, reset on wake, Zigbee frame counter in backup registers); MCUboot USB serial recovery; no Zigbee OTA, GPIO wake, battery ADC or PWM. CPU2 must run the Thread RCP firmware |
 | `bl702` | Zephyr SDK | router and awake end device: relays, plugs, sensors on I2C (hardware on GPIO0/1, 1/2, 8/9, 14/15, else bit-banged); **MCUboot**, signed image, OTA file (slot 0 at 0x20000, slot 1 at 0x88000, 0x68000 each); no full image: the boot ROM's header is written by the flashing tool (`bflb_mcu_tool` for `*-loader.bin`, then the signed image at 0x20000); needs the BL702 board of MCUboot (`modern-tc32/mcuboot`, branch `tc32-port`, pinned in `docker/pins.env`); **built, not run on hardware**; **sleepy end device (deep sleep)**, see Sleep below; no ADC battery, no PWM yet. Board: XT-ZB1 (BL702C10) |
 | `phy6252` | GNU Arm Embedded, or the ARM toolchain of the Zephyr SDK | the Ai-Thinker **PB-03F**: router and awake end device, bit-banged I2C; **MCUboot with one slot**: the loader image (`zephyr.phy6252.bin`, ROM table at 0x2000, code XIP at 0x11002400, 32 KB) and the application signed for slot 0 at 0x10000; the full image is flashed at 0x2000 (`rdwr_phy62x2.py`), later the application is replaced through the loader's serial recovery (mcumgr on UART0, P9/P10). **No OTA file**: the XIP window of the chip is 127 KB and the image fills it, so there is no room for slot 1. Needs the PB-03F board of MCUboot and the SoC image script of the Zephyr fork (see below). The fork's driver is experimental, **built, not run on hardware**; the flash is nearly full (a plug router: 99 %); no sleepy, no ADC battery, no PWM |
 
@@ -166,7 +167,11 @@ The boards of the examples are in `examples/boards/nrf52840` (an nRF52840-DK).
 `examples/sleepy-th-nicenano.yaml` uses I2C on P1.00/P0.11. It deliberately leaves out the battery ADC: nice!nano
 measures the cell on P0.04 through its own divider, unlike the DK pack's direct VDD measurement.
 
+`stm32wb55` targets the WeAct STM32WB55 Core Board. CPU2 must already run the STM32CubeWB Thread RCP firmware,
+installed with the FUS at `0x080DF000`; the builder emits the M4 application and MCUboot images only.
+
 Pin names: ESP32-C6 and BL702 `GPIO10` (reserved: C6 GPIO12/13 USB and 24..29 flash; BL702 GPIO7/8 USB and 23..28 flash);
+STM32WB55 `PA0`, `PB9` etc. (the WeAct board's built-in peripherals and SWD pins are reserved; hardware I2C is on PB9/PB8);
 PB-03F the pad as on the chip, `P2`, `P11` (the console P9/P10, the crystal P16/P17 and P1, P25..P27 are reserved).
 The boards of the examples are in `examples/boards/{esp32c6,bl702,phy6252}`.
 
@@ -184,6 +189,7 @@ The Zephyr fork has a dedicated `ZIGBEE_SLEEPY_DEEP_SYSTEM_ON` choice for this m
 | `nrf52840` | deep (System ON, RAM retained) | RTC-backed kernel timer; GPIO interrupts | in-place resume; no System OFF |
 | `nrf52840_nicenano` | deep (System ON, RAM retained) | RTC-backed kernel timer; GPIO interrupts | UF2 bootloader; no MCUboot or OTA |
 | `esp32h2`, `esp32c6` | deep (soft-off, reset on wake) | RTC timer | security frame counter survives in retained RAM; GPIO inputs do not wake the sleeping device |
+| `stm32wb55` | deep (Standby, reset on wake) | RTC timer | frame counter in RTC backup registers; no GPIO wake. MCUboot jumps directly to the app after Standby, skipping its USB recovery window and image signature check; enter ROM DFU (hold BOOT while pressing RESET) or power-cycle before updating. The WeAct board needs the Thread RCP firmware on CPU2. The builder defaults to a 3 s poll interval, matching the upstream hardware check; 7 s was not checked, so use an interval the parent can retain messages for. |
 | `phy6252` | not supported yet | | |
 
 OTA works through `west build --sysbuild` (MCUboot and the application

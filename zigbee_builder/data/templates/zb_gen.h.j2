@@ -12,7 +12,7 @@
 {% if service.on_power_on %}
 #define ZBR_SEARCH_ON_POWER_ON 1
 {% endif %}
-#define ZBR_WAKE_PERIOD_S {{ z.poll_interval }}
+#define ZBR_WAKE_PERIOD_S {{ poll_interval }}
 
 {% if sleepy and sleep.retained_attr is defined %}
 #if defined({{ sleep.retained_guard }})

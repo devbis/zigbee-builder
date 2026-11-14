@@ -381,9 +381,12 @@ def resolve(cfg: Config):
                           f"for it (no sleep: in its chip.yaml). Use sleepy: false (the end device stays awake) "
                           f"or a router")
     power = z.power or ("battery" if z.role == "end_device" else "mains")
+    poll_interval = z.poll_interval
+    if sleepy and "poll_interval" not in z.model_fields_set:
+        poll_interval = int(sleep.get("poll_interval", poll_interval))
 
-    if z.role == "end_device" and not 1 <= z.poll_interval <= 60:
-        raise ConfigError(f"poll_interval {z.poll_interval}s: the stack polls its parent every 1..60 s "
+    if z.role == "end_device" and not 1 <= poll_interval <= 60:
+        raise ConfigError(f"poll_interval {poll_interval}s: the stack polls its parent every 1..60 s "
                           f"(CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS); reports go out by their own min/max intervals")
 
     # --- pins
@@ -409,15 +412,19 @@ def resolve(cfg: Config):
     buses = cfg.i2c if isinstance(cfg.i2c, list) else ([cfg.i2c] if cfg.i2c else [])
     bus_labels = {}
     bus_nodes = {}
+    bus_devices = {}
     for b in buses:
         sda, scl = gpio(b.sda)[0], gpio(b.scl)[0]
         hw = chip.i2c_hw_for(sda.name, scl.name) if b.hw in ("auto", True) else None
         if b.hw is True and hw is None:
             raise ConfigError(f"i2c '{b.id}': {sda.name}/{scl.name} is not a hardware I2C pair on {chip.name}")
         if hw:
+            device = hw.get("device", "i2c0")
             tpl = (chip.dir / hw["template"]).read_text()
-            ctx.overlay.append(jinja2.Template(tpl).render(sda=sda.name, scl=scl.name, sda_pin=sda, scl_pin=scl))
-            bus_labels[b.id] = "&i2c0"
+            ctx.overlay.append(jinja2.Template(tpl).render(
+                device=device, sda=sda.name, scl=scl.name, sda_pin=sda, scl_pin=scl))
+            bus_labels[b.id] = f"&{device}"
+            bus_devices[b.id] = device
         else:
             bus_nodes[b.id] = (f"i2c_{ident(b.id)}", sda, scl)
             bus_labels[b.id] = "soft"
@@ -470,7 +477,7 @@ def resolve(cfg: Config):
     for b in buses:
         kids = "".join(comp_nodes.get(b.id, []))
         if b.id not in bus_nodes:
-            overlay_tail.append(f"&i2c0 {{\n{kids}}};\n")
+            overlay_tail.append(f"&{bus_devices[b.id]} {{\n{kids}}};\n")
         else:
             label, sda, scl = bus_nodes[b.id]
             overlay_tail.append(
@@ -637,7 +644,8 @@ def resolve(cfg: Config):
             group_max = max(group_max, n_rep)
 
     return {
-        "cfg": cfg, "chip": chip, "sleepy": sleepy, "power": power, "eps": eps, "ctx": ctx,
+        "cfg": cfg, "chip": chip, "sleepy": sleepy, "power": power, "poll_interval": poll_interval,
+        "eps": eps, "ctx": ctx,
         "bindings": bindings, "writes": writes, "defaults": defaults, "inputs": ctx.inputs, "inputs_used": bool(ctx.inputs), "onoffs": ctx.onoffs, "lights": ctx.lights, "service": service, "customs": ctx.customs, "switches": any(ep["switch"] for ep in eps), "ias": ctx.ias, "items": items, "cluster_max": ctx_cluster_max, "group_max": group_max,
         "attr_max": max(ZCL_ATTRIBUTE_NUM_MAX_DEFAULT, max_attrs), "overlay_tail": overlay_tail,
         "ports": chip.ports(ctx.pins_used),
@@ -1007,7 +1015,7 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
         kconfig += [f'CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION="{z.version}"']
     kconfig += chip.d.get("kconfig_all", [])
     if z.role == "end_device":
-        kconfig += [f"CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS={z.poll_interval * 1000}"]
+        kconfig += [f"CONFIG_ZIGBEE_ED_POLL_INTERVAL_MS={r['poll_interval'] * 1000}"]
         if r["sleepy"]:
             kconfig += sleep.get("kconfig", [])
             kconfig += sleep.get("retained_kconfig", [])
@@ -1026,7 +1034,7 @@ def render(cfg: Config, out: Path, base: Path | None = None) -> dict:
     zb_ctx = dict(r, z=z, role_conf=role_conf, ident=ident, ota_type=ota_type, manufacturer_code=manufacturer_code,
                   sleep=sleep, GROUP_MAX=r["group_max"], pwr={"battery": 3, "mains": 1}[r["power"]],
                   comps=ctx.comps, name=z.name, COMMON=COMMON_CLUSTERS,
-                  measure_ms=1000 * (z.measure_interval or (z.poll_interval if (r["sleepy"] or z.role == "end_device") else 1)))
+                  measure_ms=1000 * (z.measure_interval or (r["poll_interval"] if (r["sleepy"] or z.role == "end_device") else 1)))
 
     plugin_files = []
     for rel in cfg.plugins:

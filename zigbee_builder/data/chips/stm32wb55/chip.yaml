@@ -1,0 +1,39 @@
+name: stm32wb55
+board: weact_stm32wb55_core
+toolchain: gnuarmemb
+# The MCUboot loader uses USB serial recovery with overwrite-only updates. The WB55 standby
+# fast path jumps straight to slot 0 after each timed wake, so this profile does not use Zigbee OTA.
+build:
+  driver: sysbuild
+  sb_config: [SB_CONFIG_MCUBOOT_MODE_OVERWRITE_ONLY=y]
+  app_modules: [samples/zigbee/zigbee_shell/mcuboot/wbfix]
+  mcuboot_modules: [samples/zigbee/zigbee_shell/mcuboot/wbfix]
+roles: [end_device]
+# STM32WB55 Standby wakes on the RTC and resets the M4. The backup-register driver retains the
+# Zigbee frame counter. Standby has no GPIO wake source.
+sleep: {mode: deep, pin_wake: false, poll_interval: 3}
+ota: false
+snippet: null
+pins:
+  format: port_letter
+  ports: [A, B, C, D, E, H]
+  node: "gpio{port}"
+  per_port: 16
+  # Board peripherals, SWD, crystals, USB, the BOOT button and LED.
+  reserved: [PA0, PA1, PA2, PA3, PA4, PA5, PA6, PA8, PA9, PA10, PA11, PA12, PA13, PA14,
+             PA15, PB1, PB4, PB5, PC13, PC14, PC15, PE4, PH0, PH1, PH3]
+wake: none
+i2c_hw: [{sda: PB9, scl: PB8, device: i2c1, template: i2c_hw.dtsi.j2}]
+led0_node: true
+kconfig_all: [CONFIG_MAIN_STACK_SIZE=2048, CONFIG_ZIGBEE_STACK_SIZE=4096]
+loader:
+  conf: [CONFIG_LOG=n, CONFIG_CONSOLE=n, CONFIG_UART_CONSOLE=n,
+         CONFIG_SERIAL=y, CONFIG_UART_INTERRUPT_DRIVEN=y, CONFIG_UART_LINE_CTRL=y,
+         CONFIG_GPIO=y, CONFIG_MCUBOOT_SERIAL=y, CONFIG_BOOT_SERIAL_CDC_ACM=y,
+         CONFIG_BOOT_SERIAL_ENTRANCE_GPIO=n, CONFIG_BOOT_SERIAL_NO_APPLICATION=y,
+         CONFIG_BOOT_SERIAL_WAIT_FOR_DFU=y, CONFIG_BOOT_SERIAL_WAIT_FOR_DFU_TIMEOUT=5000,
+         CONFIG_MULTITHREADING=y, CONFIG_BOOT_UPGRADE_ONLY=y, CONFIG_MCUBOOT_INDICATION_LED=y]
+  overlay: loader.overlay
+# MCUboot (80 KiB), slot 0 (360 KiB), storage (32 KiB), slot 1 (328 KiB). Keep the full map
+# below the flash area reserved by the STM32WB CPU2 Thread RCP firmware.
+flash: {loader_end: 0x14000, slot_size: 0x52000}

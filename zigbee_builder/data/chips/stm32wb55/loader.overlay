@@ -1,0 +1,47 @@
+/* MCUboot's flash partitions and USB recovery endpoint for the WeAct STM32WB55 core board. */
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+	};
+};
+
+&zephyr_udc0 {
+	board_cdc_acm_uart: board_cdc_acm_uart {
+		compatible = "zephyr,cdc-acm-uart";
+		hw-flow-control;
+	};
+};
+
+/delete-node/ &boot_partition;
+/delete-node/ &slot0_partition;
+/delete-node/ &slot1_partition;
+/delete-node/ &scratch_partition;
+/delete-node/ &storage_partition;
+
+&flash0 {
+	partitions {
+		boot_partition: partition@0 {
+			compatible = "zephyr,mapped-partition";
+			label = "mcuboot";
+			reg = <0x00000000 DT_SIZE_K(80)>;
+		};
+
+		slot0_partition: partition@14000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-0";
+			reg = <0x00014000 DT_SIZE_K(360)>;
+		};
+
+		storage_partition: partition@6e000 {
+			compatible = "zephyr,mapped-partition";
+			label = "storage";
+			reg = <0x0006e000 DT_SIZE_K(32)>;
+		};
+
+		slot1_partition: partition@76000 {
+			compatible = "zephyr,mapped-partition";
+			label = "image-1";
+			reg = <0x00076000 DT_SIZE_K(328)>;
+		};
+	};
+};

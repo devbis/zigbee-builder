@@ -116,12 +116,26 @@ def _build_sysbuild(project: Path, out: Path, info: dict, env: dict, west: str) 
     The full image is the loader, padded to the slot, and the signed image."""
     env["ZEPHYR_TOOLCHAIN_VARIANT"] = _variant(info, env)
     build = out / info["name"]
+    def modules(paths: list[str]) -> str:
+        return ";".join(str(Path(p) if Path(p).is_absolute() else Path(env["ZEPHYR_BASE"]) / p)
+                         for p in paths)
+
+    app_modules = [env["ZEPHYR_EXTRA_MODULES"],
+                   modules(info["build"].get("app_modules", []))]
+    app_modules = ";".join(p for p in app_modules if p)
+    mcuboot_modules = modules(info["build"].get("mcuboot_modules", []))
+    cmake_args = ["-DSB_CONFIG_BOOTLOADER_MCUBOOT=y",
+                  *[f"-D{c}" for c in info["build"].get("sb_config", [])],
+                  *([f"-Dmcuboot_EXTRA_CONF_FILE={project / 'loader.conf'}"]
+                    if (project / "loader.conf").exists() else []),
+                  *([f"-Dmcuboot_EXTRA_DTC_OVERLAY_FILE={project / 'loader.overlay'}"]
+                    if (project / "loader.overlay").exists() else []),
+                  *([f"-Dmcuboot_EXTRA_ZEPHYR_MODULES={mcuboot_modules}"] if mcuboot_modules else []),
+                  f"-DZEPHYR_EXTRA_MODULES={app_modules}",
+                  f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"]
     subprocess.run(
         [west, "build", "--sysbuild", "-p", "always", "-b", info["board"], "-d", str(build), str(project), "--",
-         "-DSB_CONFIG_BOOTLOADER_MCUBOOT=y", *[f"-D{c}" for c in info["build"].get("sb_config", [])],
-         *([f"-Dmcuboot_EXTRA_CONF_FILE={project / 'loader.conf'}"] if (project / "loader.conf").exists() else []),
-         f"-DZEPHYR_EXTRA_MODULES={env['ZEPHYR_EXTRA_MODULES']}",
-         f"-DAPP_BUILD_DATE={os.environ.get('APP_BUILD_DATE') or date.today().strftime('%Y%m%d')}"],
+         *cmake_args],
         cwd=env["ZEPHYR_BASE"], env=env, check=True)
     app = build / project.name                       # sysbuild names the application by its directory
     return _package(info, app, build / "mcuboot/zephyr" / info["build"].get("loader_image", "zephyr.bin"), app / "zephyr/zephyr.signed.bin", env)

@@ -40,7 +40,10 @@ class Chip:
             if not m or m.group(1) not in fmt["ports"] or int(m.group(2)) >= fmt["per_port"]:
                 raise ConfigError(f"pin '{name}' does not exist on {self.name} "
                                   f"(P{fmt['ports'][0]}0..P{fmt['ports'][-1]}{fmt['per_port'] - 1})")
-            return Pin(m.group(0), fmt["node"].format(port=m.group(1).lower()), int(m.group(2)))
+            pin = m.group(0)
+            if pin in {str(p).upper() for p in fmt.get("reserved", [])}:
+                raise ConfigError(f"pin '{name}' is reserved on {self.name} (board function)")
+            return Pin(pin, fmt["node"].format(port=m.group(1).lower()), int(m.group(2)))
         if fmt["format"] == "gpio_number":
             m = re.fullmatch(r"GPIO(\d+)", str(name).upper())
             if not m or int(m.group(1)) > fmt["max"]:
